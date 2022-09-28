@@ -1,5 +1,5 @@
 [project]
-name = "relate_py"
+name = "relatepy"
 version = "0.1.0"
 authors = [{ name = "Tang Ziya", email = "tcztzy@hotmail.com" }]
 dependencies = [

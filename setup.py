@@ -8,8 +8,8 @@ src = relate / "include" / "src"
 print(relate)
 
 extensions = Extension(
-    "relate_py.data",
-    ["relate_py/data.py"],
+    "relatepy.data",
+    ["relatepy/data.py"],
     include_dirs=[str(src.parent / "pipeline"), str(src), str(src / "gzstream")],
     library_dirs=[str(relate / "bin")],
     libraries=["relateStatic", "gzstreamStatic", "z"],
@@ -19,8 +19,8 @@ extensions = Extension(
 )
 
 setup(
-    name="relate_py",
-    packages=["relate_py"],
+    name="relatepy",
+    packages=["relatepy"],
     ext_modules=cythonize(extensions),
     zip_safe=False,
 )

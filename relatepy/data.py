@@ -4,7 +4,7 @@ from pathlib import Path
 import cython
 
 from cython.cimports.libc.stdlib import free, malloc  # type: ignore
-from cython.cimports.relate_py.data import BuildTopology, CombineSections, Data, Finalize, FindEquivalentBranches, GetBranchLengths, Options, Paint, get_options  # type: ignore
+from cython.cimports.relatepy.data import BuildTopology, CombineSections, Data, Finalize, FindEquivalentBranches, GetBranchLengths, Options, Paint, get_options  # type: ignore
 
 
 @cython.cclass
