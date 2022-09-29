@@ -3,24 +3,39 @@ from setuptools import setup, Extension, find_packages
 from Cython.Build import cythonize
 
 cwd = pathlib.Path("")
-relate = cwd / "relate"
-src = relate / "include" / "src"
+relate = cwd / "relate" / "include"
+src = relate / "src"
+gzstream = src / "gzstream"
+pipeline = relate / "pipeline"
+
+relate_sources = [
+    str(src / f"{cpp}.cpp")
+    for cpp in (
+        "filesystem plot fast_log collapsed_matrix data sample fast_painting "
+        "anc mutations tree_builder branch_length_estimator anc_builder "
+        "tree_comparer"
+    ).split()
+]
 
 extensions = Extension(
     "relatepy.data",
-    ["relatepy/data.py"],
-    include_dirs=[str(src.parent / "pipeline"), str(src), str(src / "gzstream")],
-    library_dirs=[str(relate / "bin")],
-    libraries=["relateStatic", "gzstreamStatic", "z"],
+    ["relatepy/data.py", str(gzstream / "gzstream.cpp")] + relate_sources,
+    include_dirs=[str(dir) for dir in [src, gzstream, pipeline]],
+    libraries=["z"],
     language="c++",
     extra_compile_args=["-std=c++17"],  # use C++ 17 for cpp_locals
     extra_link_args=["-std=c++17"],
 )
 
 setup(
-    name="relatepy",
     packages=["relatepy"],
-    package_data={"relatepy": ["../relate/include/**/*", "../relate/bin/*", "options.cpp"]},
+    package_data={
+        "relatepy": [
+            "../relate/include/**/*.cpp",
+            "../relate/include/**/*.hpp",
+            "options.cpp",
+        ]
+    },
     ext_modules=cythonize(extensions),
     zip_safe=False,
 )
