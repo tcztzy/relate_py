@@ -1,11 +1,10 @@
 import pathlib
-from setuptools import setup, Extension
+from setuptools import setup, Extension, find_packages
 from Cython.Build import cythonize
 
-cwd = pathlib.Path.cwd()
+cwd = pathlib.Path("")
 relate = cwd / "relate"
 src = relate / "include" / "src"
-print(relate)
 
 extensions = Extension(
     "relatepy.data",
@@ -21,6 +20,7 @@ extensions = Extension(
 setup(
     name="relatepy",
     packages=["relatepy"],
+    package_data={"relatepy": ["../relate/include/**/*", "../relate/bin/*", "options.cpp"]},
     ext_modules=cythonize(extensions),
     zip_safe=False,
 )
