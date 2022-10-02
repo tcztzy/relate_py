@@ -1,8 +1,6 @@
 import logging
-import platform
 import struct
 from pathlib import Path
-from resource import RUSAGE_SELF, getrusage
 
 import click
 import click_log
@@ -16,6 +14,7 @@ from .data import (
     get_branch_length,
     paint,
 )
+from .pipeline import chunk as chunk_pipeline
 
 
 class NotRequiredIf(click.Option):
@@ -333,6 +332,16 @@ def all(
     logger.info("Done.")
 
 
+def chunk(*args, **kwargs):
+    try:
+        chunk_pipeline(*args, **kwargs)
+    except FileExistsError as e:
+        raise click.FileError(
+            e.filename,
+            "Directory already exists. Relate will use this directory to store temporary files.",
+        )
+
+
 @relate.command("chunk")
 @global_options(
     "haps", "sample", "genetic_map", "output", "dist", "use_transitions", "memory_limit"
@@ -348,33 +357,6 @@ def make_chunks(
 ) -> None:
     """Chunk the input data."""
     chunk(haps, sample, genetic_map, output, dist, use_transitions, memory_limit)
-
-
-def chunk(
-    haps: Path,
-    sample: Path,
-    genetic_map: Path,
-    output: Path,
-    dist: Path | None = None,
-    use_transitions: bool = True,
-    memory_limit: float = 5.0,
-) -> None:
-    logger.debug("Parsing data.")
-    try:
-        output.mkdir()
-    except FileExistsError:
-        raise click.FileError(
-            output,
-            "Directory already exists. Relate will use this directory to store temporary files.",
-        )
-    RelateData.chunk(
-        haps, sample, genetic_map, dist, output, use_transitions, memory_limit
-    )
-    usage = getrusage(RUSAGE_SELF)
-    logger.debug(
-        f"CPU Time spent: {usage.ru_utime:.6}s; "
-        f"Max memory usage: {usage.ru_maxrss/(1000_000 if platform.system() == 'Darwin' else 1000)}Mb."
-    )
 
 
 @relate.command("paint")

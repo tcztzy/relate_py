@@ -31,3 +31,7 @@ $ rm relate/include/src/gzstream/version
 $ pip install build  # Any tools support PEP 517 would work
 $ pip -m build
 ```
+
+## Environments
+
+Set `RELATEPY_RESOURCE_USAGE` to enable the resource usage report (also need `--verbosity=DEBUG`).
