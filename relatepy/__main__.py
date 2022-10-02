@@ -360,12 +360,13 @@ def chunk(
     memory_limit: float = 5.0,
 ) -> None:
     logger.debug("Parsing data.")
-    if output.exists():
+    try:
+        output.mkdir()
+    except FileExistsError:
         raise click.FileError(
             output,
             "Directory already exists. Relate will use this directory to store temporary files.",
         )
-    output.mkdir()
     RelateData.chunk(
         haps, sample, genetic_map, dist, output, use_transitions, memory_limit
     )
