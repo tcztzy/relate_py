@@ -3,6 +3,7 @@ import platform
 from functools import wraps
 from resource import RUSAGE_SELF, getrusage
 import os
+from typing import Callable
 
 import click_log
 
@@ -10,7 +11,7 @@ logger = logging.getLogger(__package__)
 click_log.basic_config(logger)
 
 
-def resource_usage(func):
+def resource_usage(func: Callable) -> Callable:
     @wraps(func)
     def wrapper(*args, **kwargs):
         func(*args, **kwargs)
