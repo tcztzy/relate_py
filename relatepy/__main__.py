@@ -1,5 +1,4 @@
 import logging
-import struct
 from pathlib import Path
 
 import click
@@ -17,7 +16,7 @@ class NotRequiredIf(click.Option):
             + " NOTE: This argument is mutually exclusive with %s"
             % self.not_required_if
         ).strip()
-        super(NotRequiredIf, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
     def handle_parse_result(self, ctx, opts, args):
         we_are_present = self.name in opts
@@ -32,11 +31,10 @@ class NotRequiredIf(click.Option):
             else:
                 self.prompt = None
 
-        return super(NotRequiredIf, self).handle_parse_result(ctx, opts, args)
+        return super().handle_parse_result(ctx, opts, args)
 
 
 BASE_DIR = Path(__file__).parent.parent
-RELATE_BINARY = BASE_DIR / "relate" / "bin" / "Relate"
 logger = logging.getLogger(__package__)
 click_log.basic_config(logger)
 PathType = click.Path(exists=True, path_type=Path)
@@ -173,10 +171,7 @@ def global_options(*options, **option_args):
     return wrap
 
 
-relate = click.Group()
-
-
-@relate.command(
+relate = click.Group(
     help="""\
 \b
 Relate
@@ -184,6 +179,9 @@ Relate
  * Doc:     https://myersgroup.github.io/relate
 """
 )
+
+
+@relate.command
 @global_options(
     "haps",
     "sample",
