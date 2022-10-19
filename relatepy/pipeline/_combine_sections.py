@@ -5,9 +5,12 @@ import cython
 from cython.cimports.libc.stdlib import free, malloc  # type: ignore
 from cython.cimports.relatepy.pipeline import CombineSections, Options, get_options  # type: ignore
 
+from ..utils import output_working_directory
 
+
+@output_working_directory
 def combine_sections(
-    output: Path, chunk_index: int, effective_population_size: float | None = None
+    *, output: Path, chunk_index: int, effective_population_size: float | None = None
 ):
     args = [b"relate", b"--output", output.name.encode()]
     if effective_population_size is not None:

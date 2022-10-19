@@ -5,9 +5,12 @@ import cython
 from cython.cimports.libc.stdlib import free, malloc  # type: ignore
 from cython.cimports.relatepy.pipeline import Finalize, Options, get_options  # type: ignore
 
+from ..utils import output_working_directory
 
+
+@output_working_directory
 def finalize(
-    output: Path, sample_ages: Path | None = None, annotation: Path | None = None
+    *, output: Path, sample_ages: Path | None = None, annotation: Path | None = None
 ):
     args = [b"relate", b"--output", output.name.encode()]
     if sample_ages is not None:

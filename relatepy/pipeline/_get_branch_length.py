@@ -5,8 +5,12 @@ import cython
 from cython.cimports.libc.stdlib import free, malloc  # type: ignore
 from cython.cimports.relatepy.pipeline import GetBranchLengths, Options, get_options  # type: ignore
 
+from ..utils import output_working_directory
 
+
+@output_working_directory
 def get_branch_length(
+    *,
     output: Path,
     chunk_index: int,
     first_section: int,

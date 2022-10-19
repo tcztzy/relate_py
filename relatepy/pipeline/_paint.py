@@ -5,9 +5,12 @@ import cython
 from cython.cimports.libc.stdlib import free, malloc  # type: ignore
 from cython.cimports.relatepy.pipeline import Options, get_options, Paint  # type: ignore
 
+from ..utils import output_working_directory
 
+
+@output_working_directory
 def paint(
-    output: Path, chunk_id: int, theta: float | None = None, rho: float | None = None
+    *, output: Path, chunk_index: int, theta: float | None = None, rho: float | None = None
 ):
     args = [b"relate", b"--output", output.name.encode()]
     if theta is not None and rho is not None:
@@ -20,5 +23,5 @@ def paint(
     for i, v in enumerate(args):
         argv[i] = v
     options: Options = get_options(len(args), argv)
-    Paint(options, chunk_id)
+    Paint(options, chunk_index)
     free(argv)

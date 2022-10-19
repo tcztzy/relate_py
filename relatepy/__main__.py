@@ -297,7 +297,7 @@ def chunk(
     type=float,
 )
 def paint(output: Path, chunk_index: int, theta: float, rho: float):
-    paint_pipeline(output, chunk_index, theta, rho)
+    paint_pipeline(output=output, chunk_index=chunk_index, theta=theta, rho=rho)
 
 
 if __name__ == "__main__":

@@ -91,32 +91,36 @@ def all_pipeline(
             struct.calcsize("ii"),
         )
         num_sections -= 1
-        paint_pipeline(output, c, theta, rho)
+        paint_pipeline(output=output, chunk_index=c, theta=theta, rho=rho)
         build_topology(
-            output,
-            c,
-            0,
-            num_sections - 1,
-            effective_population_size,
-            theta,
-            rho,
-            seed,
-            ancestral_state,
-            sample_ages,
+            output=output,
+            chunk_index=c,
+            first_section=0,
+            last_section=num_sections - 1,
+            effective_population_size=effective_population_size,
+            theta=theta,
+            rho=rho,
+            seed=seed,
+            ancestral_state=ancestral_state,
+            sample_ages=sample_ages,
         )
-        find_equivalent_branches(output, c)
+        find_equivalent_branches(output=output, chunk_index=c)
         get_branch_length(
-            output,
-            c,
-            0,
-            num_sections - 1,
-            mutation_rate,
-            effective_population_size,
-            coal,
-            seed,
-            sample_ages,
+            output=output,
+            chunk_index=c,
+            first_section=0,
+            last_section=num_sections - 1,
+            mutation_rate=mutation_rate,
+            effective_population_size=effective_population_size,
+            coal=coal,
+            seed=seed,
+            sample_ages=sample_ages,
         )
-        combine_sections(output, c, effective_population_size)
+        combine_sections(
+            output=output,
+            chunk_index=c,
+            effective_population_size=effective_population_size,
+        )
     if chunk_index is None:
-        finalize(output, sample_ages, annotation)
+        finalize(output=output, sample_ages=sample_ages, annotation=annotation)
     logger.info("Done.")
