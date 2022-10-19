@@ -7,7 +7,7 @@ from cython.cimports.relatepy.pipeline import FindEquivalentBranches, Options, g
 
 
 def find_equivalent_branches(output: Path, chunk_index: int):
-    args = [b"relate", b"--output", bytes(output)]
+    args = [b"relate", b"--output", output.name.encode()]
     argv: cython.pp_char = cython.cast(
         cython.pp_char, malloc(cython.sizeof(cython.p_char) * len(args))
     )

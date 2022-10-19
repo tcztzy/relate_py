@@ -9,7 +9,7 @@ from cython.cimports.relatepy.pipeline import Finalize, Options, get_options  # 
 def finalize(
     output: Path, sample_ages: Path | None = None, annotation: Path | None = None
 ):
-    args = [b"relate", b"--output", bytes(output)]
+    args = [b"relate", b"--output", output.name.encode()]
     if sample_ages is not None:
         args.extend([b"--sample_ages", bytes(sample_ages)])
     if annotation is not None:

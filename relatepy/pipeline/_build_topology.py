@@ -18,7 +18,7 @@ def build_topology(
     ancestral_state: bool = True,
     sample_ages: list[float] | None = None,
 ):
-    args = [b"relate", b"--output", bytes(output)]
+    args = [b"relate", b"--output", output.name.encode()]
     if effective_population_size is not None:
         args += [b"--effectiveN", f"{effective_population_size}".encode()]
     if theta:

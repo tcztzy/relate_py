@@ -9,9 +9,11 @@ from cython.cimports.relatepy.pipeline import Options, get_options, Paint  # typ
 def paint(
     output: Path, chunk_id: int, theta: float | None = None, rho: float | None = None
 ):
-    args = [b"relate", b"--output", bytes(output)]
-    if theta:
+    args = [b"relate", b"--output", output.name.encode()]
+    if theta is not None and rho is not None:
         args += [b"--painting", f"{theta},{rho}".encode()]
+    elif (theta is not None and rho is None) or (theta is None and rho is not None):
+        raise ValueError
     argv: cython.pp_char = cython.cast(
         cython.pp_char, malloc(cython.sizeof(cython.p_char) * len(args))
     )

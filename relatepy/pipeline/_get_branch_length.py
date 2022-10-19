@@ -20,7 +20,7 @@ def get_branch_length(
     args = [
         b"relate",
         b"--output",
-        bytes(output),
+        output.name.encode(),
         b"--mutation_rate",
         f"{mutation_rate}".encode(),
     ]

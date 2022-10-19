@@ -9,7 +9,7 @@ from cython.cimports.relatepy.pipeline import CombineSections, Options, get_opti
 def combine_sections(
     output: Path, chunk_index: int, effective_population_size: float | None = None
 ):
-    args = [b"relate", b"--output", bytes(output)]
+    args = [b"relate", b"--output", output.name.encode()]
     if effective_population_size is not None:
         args.extend([b"--effectiveN", f"{effective_population_size}".encode()])
     argv: cython.pp_char = cython.cast(
