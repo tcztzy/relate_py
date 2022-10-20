@@ -1,4 +1,4 @@
-from .basic_parse import read_coal
+from .io import read_coal, read_haps
 from .pipeline import all_pipeline
 
-__all__ = ("read_coal",)
+__all__ = ("read_coal", "read_haps", "all_pipeline")
