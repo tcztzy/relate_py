@@ -1,5 +1,3 @@
-import gzip
-import mimetypes
 import os
 import pathlib
 from dataclasses import dataclass
@@ -19,27 +17,42 @@ class Alias:
             return self
         return getattr(obj, self.source_name)
 
-    def __set__(self, obj, value):
-        setattr(obj, self.source_name, value)
-
-
-def _open(path: os.PathLike):
-    return (gzip.open if "gzip" in mimetypes.guess_type(path) else open)(path)
-
 
 class HapsFile:
-    number_of_sequences: int = 0
-    number_of_SNPs: int = 0
-    N: int = Alias("number_of_sequences")
-    L: int = Alias("number_of_SNPs")
+    """Oxford phased haplotype file"""
 
     def __init__(self, haps_path: os.PathLike, sample_path: os.PathLike) -> None:
-        with _open(sample_path) as fp:
-            for line in fp.readlines()[2:]:  # skip two header lines
-                id1, id2, _ = line.split()
-                self.number_of_sequences += 1 if id1 == id2 else 2
-        with _open(haps_path) as fp:
-            ...
+        """
+        Parameters
+        ----------
+        self : HapsFile
+        haps_path : os.PathLike
+        sample_path : os.PathLike
+        """
+        haps_path = pathlib.Path(haps_path)
+        sample = read_sample(sample_path)
+        df = dd.read_csv(
+            haps_path,
+            sep=r"\s+",
+            assume_missing=True,
+            na_values=".",
+            names=("CHR", "ID", "POS", "ALLELE0", "ALLELE1", *sample.ids),
+            blocksize=None,
+        )
+        adata = ad.AnnData(df[sample.ids].values.T, dtype=int)
+        adata.obs_names = sample.ids
+        adata.var_names = df["ID"].astype(str)
+        adata.var["CHR"] = df["CHR"]
+        adata.var["POS"] = df["POS"]
+        adata.var["ALLELE0"] = df["ALLELE0"]
+        adata.var["ALLELE1"] = df["ALLELE1"]
+        self._data = adata
+
+    def __getattr__(self, name: str):
+        return getattr(self._data, name)
+
+    N = Alias("n_obs")
+    L = Alias("n_vars")
 
 
 class SampleFile:
@@ -94,7 +107,7 @@ def read_sample(sample_path: os.PathLike) -> SampleFile:
 
 def read_haps(
     haps_path: os.PathLike, sample_path: os.PathLike | None = None
-) -> ad.AnnData:
+) -> HapsFile:
     """Read Oxford phased haplotype file
 
     Parameters
@@ -105,7 +118,7 @@ def read_haps(
 
     Returns
     -------
-    ad.AnnData
+    HapsFile
 
     Raises
     ------
@@ -119,23 +132,7 @@ def read_haps(
                 "it is impossible to guess the sample file path."
             )
         sample_path = haps_path.parent / haps_path.name.replace(".haps", ".sample")
-    sample = read_sample(sample_path)
-    df = dd.read_csv(
-        haps_path,
-        sep=r"\s+",
-        assume_missing=True,
-        na_values=".",
-        names=("CHR", "ID", "POS", "ALLELE0", "ALLELE1", *sample.ids),
-        blocksize=None,
-    )
-    adata = ad.AnnData(df[sample.ids].values.T, dtype=int)
-    adata.obs_names = sample.ids
-    adata.var_names = df["ID"].astype(str)
-    adata.var["CHR"] = df["CHR"]
-    adata.var["POS"] = df["POS"]
-    adata.var["ALLELE0"] = df["ALLELE0"]
-    adata.var["ALLELE1"] = df["ALLELE1"]
-    return adata
+    return HapsFile(haps_path, sample_path)
 
 
 def read_coal(filename: os.PathLike) -> pd.DataFrame:
