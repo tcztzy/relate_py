@@ -1,6 +1,6 @@
 from pathlib import Path
-
 from tempfile import TemporaryDirectory
+
 from relatepy import all_pipeline
 
 
