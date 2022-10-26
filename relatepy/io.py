@@ -1,8 +1,8 @@
 import os
 import pathlib
-import struct
 from dataclasses import dataclass
 from functools import cached_property
+from struct import pack
 from typing import Sequence
 
 import anndata as ad
@@ -198,28 +198,28 @@ class HapsFile:
 
             snp_tmp = section_boundary_start[-1]
             if snp_begin == 0:
-                fp_haps_chunk.write(struct.pack("QQ", chunk_size, self._data.n_obs))
+                fp_haps_chunk.write(pack("QQ", chunk_size, self.N))
                 num_windows_in_section = num_windows + 1
-                (file_out / f"parameters_c{chunk_index}").write_bytes(
-                    struct.pack(
+                (file_out / f"parameters_c{chunk_index}.bin").write_bytes(
+                    pack(
                         "III" + "I" * num_windows_in_section,
-                        self._data.n_obs,
+                        self.N,
                         chunk_size,
                         num_windows_in_section,
                         *window_boundaries[:num_windows_in_section],
                     )
                 )
-                fp_state.write(struct.pack("I", chunk_size))
+                fp_state.write(pack("I", chunk_size))
             else:
                 L_chunk: int = chunk_size + overlap_in_section
-                fp_haps_chunk.write(struct.pack("QQ", L_chunk, self._data.n_obs))
+                fp_haps_chunk.write(pack("QQ", L_chunk, self.N))
 
                 window_start: int = window_boundaries_overlap[0]
                 window_boundaries_overlap[:num_windows_overlap] -= window_start
 
                 # Output program parameters into file
                 (file_out / f"parameters_c{chunk_index}.bin").write_bytes(
-                    struct.pack(
+                    pack(
                         "III" + "I" * (num_windows + 1 + num_windows_overlap),
                         self._data.n_obs,
                         L_chunk,
@@ -229,7 +229,7 @@ class HapsFile:
                     )
                 )
 
-                fp_state.write(struct.pack("I", L_chunk))
+                fp_state.write(pack("I", L_chunk))
                 for p in p_overlap:
                     if not use_transitions:
                         if (
@@ -250,7 +250,7 @@ class HapsFile:
                             state_val = 0
                         else:
                             state_val = 1
-                    fp_state.write(struct.pack("I", state_val))
+                    fp_state.write(pack("I", state_val))
                     snp_tmp += 1
                     fp_haps_chunk.write(bytes(ord(str(i)) for i in p))
             for p in p_seq[:chunk_size]:
@@ -264,7 +264,7 @@ class HapsFile:
                         state_val = 0
                     else:
                         state_val = 1
-                fp_state.write(struct.pack("I", state_val))
+                fp_state.write(pack("I", state_val))
                 snp_tmp += 1
                 fp_haps_chunk.write(bytes(ord(str(i)) for i in p))
             fp_haps_chunk.close()
@@ -282,7 +282,7 @@ class HapsFile:
         actual_min_memory_size += 2 * self.N**2 + 3 * self.N
         actual_min_memory_size *= 4.0 / 1e9
         fp.write(
-            struct.pack(
+            pack(
                 "IIId" + "I" * 2 * num_chunks,
                 self.N,
                 self.L,
@@ -309,7 +309,7 @@ class HapsFile:
         with open(file_out / "props.bin", "wb") as fp_props:
             for snp in range(self.L):
                 fp_props.write(
-                    struct.pack(
+                    pack(
                         "III1024s1024s1024s",
                         snp,
                         int(bp_pos[snp]),
@@ -321,45 +321,28 @@ class HapsFile:
                 )
 
         m_map = GeneticMapFile(filename_map)
-        it_rpos = 0
-        it_bppos = 0
-        map_pos: int = 0
 
-        if m_map.bp[map_pos] > bp_pos[it_bppos]:
-            self.rpos[it_rpos] = m_map.gen_pos[map_pos] * 1e-2
-            it_rpos += 1
-            it_bppos += 1
+        map_index = np.searchsorted(m_map.bp, bp_pos, side="right")
 
-        while it_rpos <= self.L:
-            while (
-                m_map.bp[map_pos + 1] <= bp_pos[it_bppos]
-                and map_pos < len(m_map.bp) - 2
-            ):
-                map_pos += 1
-            if m_map.bp[map_pos + 1] < m_map.bp[map_pos]:
-                logger.info(f"{m_map.bp[map_pos]} {m_map.bp[map_pos]}")
-            assert m_map.bp[map_pos + 1] - m_map.bp[map_pos] >= 0
-            if (
-                m_map.bp[map_pos + 1] - m_map.bp[map_pos] == 0
-                or m_map.bp[map_pos] > bp_pos[it_bppos]
-            ):
-                self.rpos[it_rpos] = m_map.gen_pos[map_pos] * 1e-2
-            else:
-                self.rpos[it_rpos] = (
-                    (bp_pos[it_bppos] - m_map.bp[map_pos])
-                    / ((m_map.bp[map_pos + 1] - m_map.bp[map_pos]))
-                    * (m_map.gen_pos[map_pos + 1] - m_map.gen_pos[map_pos])
-                    + m_map.gen_pos[map_pos]
-                ) * 1e-2
-            it_rpos += 1
-            it_bppos += 1
+        if map_index[-1] < len(m_map.bp) - 2:
+            # while there are still at last one position
+            last_pos = map_index[-1] + 1
+        else:
+            last_pos = map_index[-1]
+        map_diff_index = np.append(map_index, last_pos)
+        map_diff = np.diff(m_map.bp[map_diff_index])
+        rpos = (bp_pos - m_map.bp[map_index]) / map_diff * np.diff(
+            m_map.gen_pos[map_diff_index]
+        ) + m_map.gen_pos[map_index]
+        cond1 = map_diff == 0 | (bp_pos < m_map.bp[map_index])
+        self.rpos = np.select([cond1, ~cond1], [m_map.gen_pos[map_index], rpos]) * 1e-2
         self.r = np.clip(np.diff(self.rpos), lower_bound, np.inf) * 2500
 
         for chunk in range(num_chunks):
             L_chunk = section_boundary_end[chunk] - section_boundary_start[chunk]
             L_chunk_plus_one = L_chunk + 1
             (file_out / f"chunk_{chunk}.bp").write_bytes(
-                struct.pack(
+                pack(
                     "I" + "i" * L_chunk,
                     L_chunk,
                     *bp_pos[
@@ -368,14 +351,14 @@ class HapsFile:
                 )
             )
             (file_out / f"chunk_{chunk}.dist").write_bytes(
-                struct.pack(
+                pack(
                     "I" + "i" * L_chunk,
                     L_chunk,
                     *dist[section_boundary_start[chunk] : section_boundary_end[chunk]],
                 )
             )
             (file_out / f"chunk_{chunk}.rpos").write_bytes(
-                struct.pack(
+                pack(
                     "I" + "d" * L_chunk_plus_one,
                     L_chunk_plus_one,
                     *self.rpos[
@@ -384,7 +367,7 @@ class HapsFile:
                 )
             )
             (file_out / f"chunk_{chunk}.r").write_bytes(
-                struct.pack(
+                pack(
                     "I" + "d" * L_chunk,
                     L_chunk,
                     *self.r[
@@ -401,6 +384,7 @@ class GeneticMapFile:
     def __init__(self, path: pathlib.Path) -> None:
         m = pd.read_csv(path, sep=r"\s", engine="python")
         self.bp = m.iloc[:, 0]
+        assert self.bp.is_monotonic_increasing
         self.gen_pos = m.iloc[:, 2]
 
 
