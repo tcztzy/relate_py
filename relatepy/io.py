@@ -368,7 +368,7 @@ class HapsFile:
             )
             (file_out / f"chunk_{chunk}.r").write_bytes(
                 pack(
-                    "I" + "d" * L_chunk,
+                    "=I" + "d" * L_chunk,
                     L_chunk,
                     *self.r[
                         section_boundary_start[chunk] : section_boundary_end[chunk]

@@ -44,3 +44,11 @@ def test_haps(haps_path, sample_path, genetic_map_path, tmp_path: Path):
     length, *rpos = unpack(fmt, content)
     assert len(rpos) == length
     assert (data.rpos == rpos).all()
+    # check chunk_0.r
+    chunk_0_r = output_dir / "chunk_0.r"
+    assert chunk_0_r.exists()
+    content = chunk_0_r.read_bytes()
+    fmt = f"=I{data.L}d"
+    length, *r = unpack(fmt, content)
+    assert len(r) == length
+    assert (data.r == r).all()
