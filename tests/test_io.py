@@ -36,3 +36,11 @@ def test_haps(haps_path, sample_path, genetic_map_path, tmp_path: Path):
     (L,) = unpack("I", content[:sizeof_uint32])
     assert L == data.L and len(content) == sizeof_uint32 + calcsize("i") * L
     assert (unpack("i" * L, content[sizeof_uint32:]) == np.diff(data.bp_pos)).all()
+    # check chunk_0.rpos
+    chunk_0_rpos = output_dir / "chunk_0.rpos"
+    assert chunk_0_rpos.exists()
+    content = chunk_0_rpos.read_bytes()
+    fmt = f"=I{data.L+1}d"
+    length, *rpos = unpack(fmt, content)
+    assert len(rpos) == length
+    assert (data.rpos == rpos).all()

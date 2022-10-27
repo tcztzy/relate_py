@@ -334,7 +334,7 @@ class HapsFile:
         rpos = (bp_pos - m_map.bp[map_index]) / map_diff * np.diff(
             m_map.gen_pos[map_diff_index]
         ) + m_map.gen_pos[map_index]
-        cond1 = map_diff == 0 | (bp_pos < m_map.bp[map_index])
+        cond1 = (map_diff == 0) | (bp_pos < m_map.bp[map_index])
         self.rpos = np.select([cond1, ~cond1], [m_map.gen_pos[map_index], rpos]) * 1e-2
         self.r = np.clip(np.diff(self.rpos), lower_bound, np.inf) * 2500
 
@@ -359,7 +359,7 @@ class HapsFile:
             )
             (file_out / f"chunk_{chunk}.rpos").write_bytes(
                 pack(
-                    "I" + "d" * L_chunk_plus_one,
+                    "=I" + "d" * L_chunk_plus_one,
                     L_chunk_plus_one,
                     *self.rpos[
                         section_boundary_start[chunk] : section_boundary_end[chunk] + 1
