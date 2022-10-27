@@ -6,8 +6,7 @@ import numpy as np
 
 def test_haps(haps_path, sample_path, genetic_map_path, tmp_path: Path):
     data = read_haps(haps_path, sample_path)
-    assert data.n_obs == data.N == 8
-    assert data.n_vars == data.L == 130862
+    assert data.N == 8 and data.L == 130862
     output_dir = tmp_path / "example"
     output_dir.mkdir()
     data.make_chunks(output_dir, genetic_map_path)
@@ -52,3 +51,4 @@ def test_haps(haps_path, sample_path, genetic_map_path, tmp_path: Path):
     length, *r = unpack(fmt, content)
     assert len(r) == length
     assert (data.r == r).all()
+    # check chunk_0.state

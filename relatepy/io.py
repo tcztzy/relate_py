@@ -15,16 +15,6 @@ from relatepy.utils import logger
 lower_bound = 1e-10
 
 
-@dataclass
-class Alias:
-    source_name: str
-
-    def __get__(self, obj, objtype=None):
-        if obj is None:
-            return self
-        return getattr(obj, self.source_name)
-
-
 class HapsFile:
     """Oxford phased haplotype file"""
 
@@ -51,17 +41,18 @@ class HapsFile:
             dtype="u1",
             var=df.drop(columns=sample.ids).compute(),
         )
-        # adata.obs_names = sample.ids
         adata.var["bp_pos"] = adata.var["bp_pos"].astype(int)
         adata.var["dist"] = np.append(np.diff(adata.var["bp_pos"]), [1])
         self._data = adata
         self.rpos = np.zeros(self.L + 1)
 
-    def __getattr__(self, name: str):
-        return getattr(self._data, name)
+    @cached_property
+    def N(self):
+        return self._data.n_obs
 
-    N = Alias("n_obs")
-    L = Alias("n_vars")
+    @cached_property
+    def L(self):
+        return self._data.n_vars
 
     @cached_property
     def bp_pos(self):
@@ -76,6 +67,21 @@ class HapsFile:
     @r.setter
     def r(self, value):
         self._data.var["recombination_distance"] = value
+
+    @property
+    def dist(self):
+        return self._data.var["dist"]
+
+    @dist.setter
+    def dist(self, value):
+        self._data.var["dist"] = value
+
+    @cached_property
+    def chunks(self):
+        return [
+            DataChunk(self, i, slice(*boundaries))
+            for i, boundaries in enumerate(self.section_boundaries)
+        ]
 
     def make_chunks(
         self,
@@ -274,6 +280,9 @@ class HapsFile:
         assert section_boundary_end[-1] == self.L
         assert len(section_boundary_start) == len(section_boundary_end)
         num_chunks: int = len(section_boundary_start)
+        self.section_boundaries = tuple(
+            zip(section_boundary_start, section_boundary_end)
+        )
 
         logger.warning(
             f"Warning: Will use min {2.0 * (4.0 * self.N ** 2 * (max_windows_per_section + 2.0)) / 1e9}GB of hard disc."
@@ -338,43 +347,37 @@ class HapsFile:
         self.rpos = np.select([cond1, ~cond1], [m_map.gen_pos[map_index], rpos]) * 1e-2
         self.r = np.clip(np.diff(self.rpos), lower_bound, np.inf) * 2500
 
-        for chunk in range(num_chunks):
-            L_chunk = section_boundary_end[chunk] - section_boundary_start[chunk]
-            L_chunk_plus_one = L_chunk + 1
-            (file_out / f"chunk_{chunk}.bp").write_bytes(
-                pack(
-                    "I" + "i" * L_chunk,
-                    L_chunk,
-                    *bp_pos[
-                        section_boundary_start[chunk] : section_boundary_end[chunk]
-                    ],
-                )
-            )
-            (file_out / f"chunk_{chunk}.dist").write_bytes(
-                pack(
-                    "I" + "i" * L_chunk,
-                    L_chunk,
-                    *dist[section_boundary_start[chunk] : section_boundary_end[chunk]],
-                )
-            )
-            (file_out / f"chunk_{chunk}.rpos").write_bytes(
-                pack(
-                    "=I" + "d" * L_chunk_plus_one,
-                    L_chunk_plus_one,
-                    *self.rpos[
-                        section_boundary_start[chunk] : section_boundary_end[chunk] + 1
-                    ],
-                )
-            )
-            (file_out / f"chunk_{chunk}.r").write_bytes(
-                pack(
-                    "=I" + "d" * L_chunk,
-                    L_chunk,
-                    *self.r[
-                        section_boundary_start[chunk] : section_boundary_end[chunk]
-                    ],
-                )
-            )
+        for chunk in self.chunks:
+            chunk.dump(file_out)
+
+
+@dataclass
+class DataChunk:
+    """Will only support dump for backward compatibility"""
+
+    data: HapsFile
+    id: int
+    boundaries: slice
+
+    def __getattr__(self, attr):
+        boundaries = (
+            self.boundaries
+            if attr != "rpos"
+            else slice(self.boundaries.start, self.boundaries.stop + 1)
+        )
+        return getattr(self.data, attr)[boundaries]
+
+    @property
+    def bp(self):
+        return self.data.bp_pos[self.boundaries]
+
+    def dump(self, output: pathlib.Path):
+        stem = output / f"chunk_{self.id}"
+        for prop, fmt in dict(bp="I{}i", dist="I{}i", rpos="=I{}d", r="=I{}d").items():
+            value = getattr(self, prop)
+            size = len(value)
+            content = pack(fmt.format(size), size, *value)
+            stem.with_suffix("." + prop).write_bytes(content)
 
 
 class GeneticMapFile:
