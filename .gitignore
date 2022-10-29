@@ -5,4 +5,5 @@ __pycache__/
 !relatepy/pipeline/options.cpp
 *.so
 *.egg-info
+.coverage
 .python-version

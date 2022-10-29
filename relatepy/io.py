@@ -15,6 +15,24 @@ from relatepy.utils import logger
 lower_bound = 1e-10
 
 
+def pair(p):
+    match p:
+        case "A":
+            return "G"
+        case "C":
+            return "T"
+        case "G":
+            return "A"
+        case "T":
+            return "C"
+        case _:
+            raise ValueError
+
+
+def is_paired(a, b):
+    return pair(a) == b
+
+
 class HapsFile:
     """Oxford phased haplotype file"""
 
@@ -238,38 +256,19 @@ class HapsFile:
                 fp_state.write(pack("I", L_chunk))
                 for p in p_overlap:
                     if not use_transitions:
-                        if (
-                            (ancestral[snp_tmp] == "C" and alternative[snp_tmp] == "T")
-                            or (
-                                ancestral[snp_tmp] == "T"
-                                and alternative[snp_tmp] == "C"
-                            )
-                            or (
-                                ancestral[snp_tmp] == "A"
-                                and alternative[snp_tmp] == "G"
-                            )
-                            or (
-                                ancestral[snp_tmp] == "G"
-                                and alternative[snp_tmp] == "A"
-                            )
-                        ):
-                            state_val = 0
-                        else:
-                            state_val = 1
+                        state_val = (
+                            0
+                            if is_paired(ancestral[snp_tmp], alternative[snp_tmp])
+                            else 1
+                        )
                     fp_state.write(pack("I", state_val))
                     snp_tmp += 1
                     fp_haps_chunk.write(bytes(ord(str(i)) for i in p))
             for p in p_seq[:chunk_size]:
                 if not use_transitions:
-                    if (
-                        (ancestral[snp_tmp] == "C" and alternative[snp_tmp] == "T")
-                        or (ancestral[snp_tmp] == "T" and alternative[snp_tmp] == "C")
-                        or (ancestral[snp_tmp] == "A" and alternative[snp_tmp] == "G")
-                        or (ancestral[snp_tmp] == "G" and alternative[snp_tmp] == "A")
-                    ):
-                        state_val = 0
-                    else:
-                        state_val = 1
+                    state_val = (
+                        0 if is_paired(ancestral[snp_tmp], alternative[snp_tmp]) else 1
+                    )
                 fp_state.write(pack("I", state_val))
                 snp_tmp += 1
                 fp_haps_chunk.write(bytes(ord(str(i)) for i in p))
@@ -287,10 +286,9 @@ class HapsFile:
         logger.warning(
             f"Warning: Will use min {2.0 * (4.0 * self.N ** 2 * (max_windows_per_section + 2.0)) / 1e9}GB of hard disc."
         )
-        fp = open(file_out / "parameters.bin", "wb")
         actual_min_memory_size += 2 * self.N**2 + 3 * self.N
         actual_min_memory_size *= 4.0 / 1e9
-        fp.write(
+        (file_out / "parameters.bin").write_bytes(
             pack(
                 "IIId" + "I" * 2 * num_chunks,
                 self.N,
@@ -301,7 +299,6 @@ class HapsFile:
                 *section_boundary_end,
             )
         )
-        fp.close()
         # calculate rpos, r, pos here
         if filename_dist is None:
             dist = self._data.var["dist"]
