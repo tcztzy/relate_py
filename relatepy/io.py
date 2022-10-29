@@ -15,7 +15,7 @@ from relatepy.utils import logger
 lower_bound = 1e-10
 
 
-def pair(p):
+def pair(p: str | pd.Series) -> str | pd.Series:
     match p:
         case "A":
             return "G"
@@ -26,10 +26,10 @@ def pair(p):
         case "T":
             return "C"
         case _:
-            raise ValueError
+            return p.replace({"A": "G", "C": "T", "G": "A", "T": "A"})
 
 
-def is_paired(a, b):
+def is_paired(a: str | pd.Series, b: str | pd.Series):
     return pair(a) == b
 
 
@@ -97,7 +97,7 @@ class HapsFile:
     @cached_property
     def chunks(self):
         return [
-            DataChunk(self, i, slice(*boundaries))
+            DataChunk(self, i, slice(*boundaries), self.use_transitions)
             for i, boundaries in enumerate(self.section_boundaries)
         ]
 
@@ -109,6 +109,7 @@ class HapsFile:
         use_transitions: bool = True,
         min_memory: float = 5.0,
     ):
+        self.use_transitions = use_transitions
         bp_pos = self.bp_pos
         ancestral = self._data.var["ancestral"]
         alternative = self._data.var["alternative"]
@@ -144,7 +145,6 @@ class HapsFile:
         window_memory_size = 0.0
         while snp < self.L:
             fp_haps_chunk = open(file_out / f"chunk_{chunk_index}.hap", "wb")
-            fp_state = open(file_out / f"chunk_{chunk_index}.state", "wb")
             # output chunk bed into fp_haps_chunk and chunk pos, rpos into fp_pos
 
             if snp > 0:
@@ -233,7 +233,6 @@ class HapsFile:
                         *window_boundaries[:num_windows_in_section],
                     )
                 )
-                fp_state.write(pack("I", chunk_size))
             else:
                 L_chunk: int = chunk_size + overlap_in_section
                 fp_haps_chunk.write(pack("QQ", L_chunk, self.N))
@@ -253,27 +252,13 @@ class HapsFile:
                     )
                 )
 
-                fp_state.write(pack("I", L_chunk))
                 for p in p_overlap:
-                    if not use_transitions:
-                        state_val = (
-                            0
-                            if is_paired(ancestral[snp_tmp], alternative[snp_tmp])
-                            else 1
-                        )
-                    fp_state.write(pack("I", state_val))
                     snp_tmp += 1
                     fp_haps_chunk.write(bytes(ord(str(i)) for i in p))
             for p in p_seq[:chunk_size]:
-                if not use_transitions:
-                    state_val = (
-                        0 if is_paired(ancestral[snp_tmp], alternative[snp_tmp]) else 1
-                    )
-                fp_state.write(pack("I", state_val))
                 snp_tmp += 1
                 fp_haps_chunk.write(bytes(ord(str(i)) for i in p))
             fp_haps_chunk.close()
-            fp_state.close()
             chunk_index += 1
 
         assert section_boundary_end[-1] == self.L
@@ -287,7 +272,7 @@ class HapsFile:
             f"Warning: Will use min {2.0 * (4.0 * self.N ** 2 * (max_windows_per_section + 2.0)) / 1e9}GB of hard disc."
         )
         actual_min_memory_size += 2 * self.N**2 + 3 * self.N
-        actual_min_memory_size *= 4.0 / 1e9
+        actual_min_memory_size *= 4.0 / 1e9  # to GB
         (file_out / "parameters.bin").write_bytes(
             pack(
                 "IIId" + "I" * 2 * num_chunks,
@@ -355,6 +340,7 @@ class DataChunk:
     data: HapsFile
     id: int
     boundaries: slice
+    use_transitions: bool = True
 
     def __getattr__(self, attr):
         boundaries = (
@@ -368,11 +354,29 @@ class DataChunk:
     def bp(self):
         return self.data.bp_pos[self.boundaries]
 
+    @cached_property
+    def size(self):
+        return self.boundaries.stop - self.boundaries.start
+
+    @property
+    def state(self):
+        if self.use_transitions:
+            return np.ones(self.size, dtype="u4")
+        else:
+            return (
+                ~is_paired(
+                    self.data._data.var["ancestral"][self.boundaries],
+                    self.data._data.var["alternative"][self.boundaries],
+                )
+            ).astype(int)
+
     def dump(self, output: pathlib.Path):
         stem = output / f"chunk_{self.id}"
-        for prop, fmt in dict(bp="I{}i", dist="I{}i", rpos="=I{}d", r="=I{}d").items():
+        for prop, fmt in dict(
+            bp="I{}i", dist="I{}i", rpos="=I{}d", r="=I{}d", state="I{}I"
+        ).items():
             value = getattr(self, prop)
-            size = len(value)
+            size = self.size + int(prop == "rpos")
             content = pack(fmt.format(size), size, *value)
             stem.with_suffix("." + prop).write_bytes(content)
 

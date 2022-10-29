@@ -52,3 +52,9 @@ def test_haps(haps_path, sample_path, genetic_map_path, tmp_path: Path):
     assert len(r) == length
     assert (data.r == r).all()
     # check chunk_0.state
+    state = output_dir / "chunk_0.state"
+    assert state.exists()
+    content = state.read_bytes()
+    length, *states = unpack(f"{data.L + 1}I", content)
+    assert length == data.L
+    assert all(s == 1 for s in states)
