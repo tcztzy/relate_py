@@ -33,10 +33,26 @@ def is_paired(a: str | pd.Series, b: str | pd.Series):
     return pair(a) == b
 
 
+def pack_props(row: pd.Series):
+    return pack(
+        "II1024s1024s1024s",
+        row["bp_pos"],
+        row["dist"],
+        f"{row['ID']:\0<1024}".encode(),
+        f"{row['ancestral']:\0<1024}".encode(),
+        f"{row['alternative']:\0<1024}".encode(),
+    )
+
+
 class HapsFile:
     """Oxford phased haplotype file"""
 
-    def __init__(self, haps_path: os.PathLike, sample_path: os.PathLike) -> None:
+    def __init__(
+        self,
+        haps_path: os.PathLike,
+        sample_path: os.PathLike,
+        dist_path: os.PathLike | None = None,
+    ) -> None:
         """
         Parameters
         ----------
@@ -59,9 +75,9 @@ class HapsFile:
             dtype="u1",
             var=df.drop(columns=sample.ids).compute(),
         )
-        adata.var["bp_pos"] = adata.var["bp_pos"].astype(int)
-        adata.var["dist"] = np.append(np.diff(adata.var["bp_pos"]), [1])
+        adata.var["bp_pos"] = adata.var["bp_pos"].astype("u4")
         self._data = adata
+        self._update_dist(dist_path)
         self.rpos = np.zeros(self.L + 1)
 
     @cached_property
@@ -101,6 +117,19 @@ class HapsFile:
             for i, boundaries in enumerate(self.section_boundaries)
         ]
 
+    def _update_dist(self, dist_path: os.PathLike | None):
+        if dist_path is None:
+            dist = np.append(np.diff(self._data.var["bp_pos"]), np.uint32(1))
+        else:
+            dist = pd.read_csv(dist_path, sep=r"\s+", skiprows=1, names=("bp", "dist"))[
+                "dist"
+            ].astype("u4")
+        if (dist <= 0).any():
+            raise ValueError(
+                "SNPs are not sorted by bp or more than one SNP at same position."
+            )
+        self._data.var["dist"] = dist
+
     def make_chunks(
         self,
         file_out: pathlib.Path,
@@ -109,11 +138,9 @@ class HapsFile:
         use_transitions: bool = True,
         min_memory: float = 5.0,
     ):
+        if filename_dist is not None:
+            self._update_dist(dist_path=filename_dist)
         self.use_transitions = use_transitions
-        bp_pos = self.bp_pos
-        ancestral = self._data.var["ancestral"]
-        alternative = self._data.var["alternative"]
-        rsid = self._data.var["ID"]
         min_memory_size = min_memory * 1e9 / 4.0 - (2 * self.N**2 + 3 * self.N)
         actual_min_memory_size = 0.0
         if min_memory_size <= 0:
@@ -126,15 +153,11 @@ class HapsFile:
         if min_memory >= 100:
             max_chunk_size = 2500000
 
-        p_seq: np.ndarray = np.zeros((max_chunk_size, self.N), dtype="u1")
-        p_overlap: np.ndarray = np.zeros((overlap, self.N), dtype="u1")
-
         snp = 0
         window_boundaries = np.zeros(windows_per_section + 1, dtype=np.int32)
         window_boundaries_overlap = np.zeros(windows_per_section + 1)
         section_boundary_start = [0]
         section_boundary_end = []
-        state_val: int = 1
         min_snps_in_window: int = max_chunk_size
         mean_snps_in_window: float = 0.0
         num_windows: int
@@ -144,7 +167,6 @@ class HapsFile:
         chunk_index: int = 0
         window_memory_size = 0.0
         while snp < self.L:
-            fp_haps_chunk = open(file_out / f"chunk_{chunk_index}.hap", "wb")
             # output chunk bed into fp_haps_chunk and chunk pos, rpos into fp_pos
 
             if snp > 0:
@@ -154,9 +176,6 @@ class HapsFile:
                 assert overlap_in_section <= chunk_size
                 snp_section_begin: int = snp - overlap_in_section
                 section_boundary_start.append(snp_section_begin)
-                p_overlap[:overlap_in_section] = p_seq[
-                    chunk_size - overlap_in_section : chunk_size
-                ].copy()
 
                 window_boundaries_overlap[0] = snp_section_begin
                 _window_boundaries = window_boundaries[:num_windows]
@@ -180,8 +199,7 @@ class HapsFile:
                 and chunk_size < max_chunk_size
                 and snp < self.L
             ):
-                p_seq[it_p] = self._data.X[:, it_p]
-                num_derived: int = p_seq[it_p].sum()
+                num_derived: int = self._data.X[:, it_p].sum()
 
                 window_memory_size += num_derived * (
                     self.N + 1
@@ -210,7 +228,7 @@ class HapsFile:
             window_boundaries[num_windows] = snp
             assert num_windows <= windows_per_section
 
-            if num_windows > max_windows_per_section:
+            if max_windows_per_section < num_windows:
                 max_windows_per_section = num_windows
 
             if mean_snps_in_window < 100:
@@ -220,9 +238,7 @@ class HapsFile:
 
             section_boundary_end.append(snp)
 
-            snp_tmp = section_boundary_start[-1]
             if snp_begin == 0:
-                fp_haps_chunk.write(pack("QQ", chunk_size, self.N))
                 num_windows_in_section = num_windows + 1
                 (file_out / f"parameters_c{chunk_index}.bin").write_bytes(
                     pack(
@@ -235,7 +251,6 @@ class HapsFile:
                 )
             else:
                 L_chunk: int = chunk_size + overlap_in_section
-                fp_haps_chunk.write(pack("QQ", L_chunk, self.N))
 
                 window_start: int = window_boundaries_overlap[0]
                 window_boundaries_overlap[:num_windows_overlap] -= window_start
@@ -251,14 +266,6 @@ class HapsFile:
                         *(window_boundaries[: num_windows + 1] - window_start),
                     )
                 )
-
-                for p in p_overlap:
-                    snp_tmp += 1
-                    fp_haps_chunk.write(bytes(ord(str(i)) for i in p))
-            for p in p_seq[:chunk_size]:
-                snp_tmp += 1
-                fp_haps_chunk.write(bytes(ord(str(i)) for i in p))
-            fp_haps_chunk.close()
             chunk_index += 1
 
         assert section_boundary_end[-1] == self.L
@@ -284,36 +291,10 @@ class HapsFile:
                 *section_boundary_end,
             )
         )
-        # calculate rpos, r, pos here
-        if filename_dist is None:
-            dist = self._data.var["dist"]
-            if (dist <= 0).any():
-                raise ValueError(
-                    "SNPs are not sorted by bp or more than one SNP at same position."
-                )
-        else:
-            df = pd.read_csv(
-                filename_dist, sep=r"\s+", skiprows=1, names=("mbp", "mdist")
-            )
-            dist = df["mdist"].values
-            self._data.var["dist"] = dist
-        with open(file_out / "props.bin", "wb") as fp_props:
-            for snp in range(self.L):
-                fp_props.write(
-                    pack(
-                        "III1024s1024s1024s",
-                        snp,
-                        int(bp_pos[snp]),
-                        int(dist[snp]),
-                        f"{rsid[snp]:\0<1024}".encode(),
-                        f"{ancestral[snp]:\0<1024}".encode(),
-                        f"{alternative[snp]:\0<1024}".encode(),
-                    )
-                )
 
         m_map = GeneticMapFile(filename_map)
 
-        map_index = np.searchsorted(m_map.bp, bp_pos, side="right")
+        map_index = np.searchsorted(m_map.bp, self.bp_pos, side="right")
 
         if map_index[-1] < len(m_map.bp) - 2:
             # while there are still at last one position
@@ -322,15 +303,21 @@ class HapsFile:
             last_pos = map_index[-1]
         map_diff_index = np.append(map_index, last_pos)
         map_diff = np.diff(m_map.bp[map_diff_index])
-        rpos = (bp_pos - m_map.bp[map_index]) / map_diff * np.diff(
+        rpos = (self.bp_pos - m_map.bp[map_index]) / map_diff * np.diff(
             m_map.gen_pos[map_diff_index]
         ) + m_map.gen_pos[map_index]
-        cond1 = (map_diff == 0) | (bp_pos < m_map.bp[map_index])
+        cond1 = (map_diff == 0) | (self.bp_pos < m_map.bp[map_index])
         self.rpos = np.select([cond1, ~cond1], [m_map.gen_pos[map_index], rpos]) * 1e-2
         self.r = np.clip(np.diff(self.rpos), lower_bound, np.inf) * 2500
 
+        self.dump(file_out)
+
+    def dump(self, output: pathlib.Path):
+        props = self._data.var.apply(pack_props, axis=1)
+        snp_bytes = props.index.astype(bytes)
+        (output / "props.bin").write_bytes(b"".join(snp_bytes + props))
         for chunk in self.chunks:
-            chunk.dump(file_out)
+            chunk.dump(output)
 
 
 @dataclass
@@ -348,14 +335,17 @@ class DataChunk:
             if attr != "rpos"
             else slice(self.boundaries.start, self.boundaries.stop + 1)
         )
-        return getattr(self.data, attr)[boundaries]
+        attr = getattr(self.data, attr)[boundaries]
+        if isinstance(attr, pd.Series):
+            attr = attr.values
+        return attr
 
     @property
     def bp(self):
         return self.data.bp_pos[self.boundaries]
 
     @cached_property
-    def size(self):
+    def size(self) -> int:
         return self.boundaries.stop - self.boundaries.start
 
     @property
@@ -370,15 +360,20 @@ class DataChunk:
                 )
             ).astype(int)
 
+    @property
+    def hap(self):
+        return self.data._data.X[:, self.boundaries]
+
     def dump(self, output: pathlib.Path):
         stem = output / f"chunk_{self.id}"
-        for prop, fmt in dict(
-            bp="I{}i", dist="I{}i", rpos="=I{}d", r="=I{}d", state="I{}I"
-        ).items():
-            value = getattr(self, prop)
-            size = self.size + int(prop == "rpos")
-            content = pack(fmt.format(size), size, *value)
+        for prop in ("bp", "dist", "rpos", "r", "state"):
+            value: np.ndarray = getattr(self, prop)
+            content = np.uint32(len(value)).tobytes() + value.tobytes()
             stem.with_suffix("." + prop).write_bytes(content)
+        stem.with_suffix(".hap").write_bytes(
+            np.array([self.size, self.data._data.n_obs], dtype="u8").tobytes()
+            + (self.hap + 48).astype("u1").tobytes("F")
+        )
 
 
 class GeneticMapFile:
