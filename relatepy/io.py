@@ -3,7 +3,6 @@ import pathlib
 from dataclasses import dataclass
 from functools import cached_property
 from struct import pack
-from typing import Sequence
 
 import anndata as ad
 import dask.dataframe as dd
@@ -25,11 +24,13 @@ def pair(p: str | pd.Series) -> str | pd.Series:
             return "A"
         case "T":
             return "C"
+        case s if isinstance(s, pd.Series):
+            return s.replace({"A": "G", "C": "T", "G": "A", "T": "A"})
         case _:
-            return p.replace({"A": "G", "C": "T", "G": "A", "T": "A"})
+            raise ValueError
 
 
-def is_paired(a: str | pd.Series, b: str | pd.Series):
+def is_paired(a: str | pd.Series, b: str | pd.Series) -> bool | pd.Series:
     return pair(a) == b
 
 
@@ -47,11 +48,14 @@ def pack_props(row: pd.Series):
 class HapsFile:
     """Oxford phased haplotype file"""
 
+    section_boundaries = ()
+
     def __init__(
         self,
         haps_path: os.PathLike,
         sample_path: os.PathLike,
         dist_path: os.PathLike | None = None,
+        use_transition: bool = True,
     ) -> None:
         """
         Parameters
@@ -76,39 +80,43 @@ class HapsFile:
             var=df.drop(columns=sample.ids).compute(),
         )
         adata.var["bp_pos"] = adata.var["bp_pos"].astype("u4")
-        self._data = adata
+        self.data = adata
         self._update_dist(dist_path)
         self.rpos = np.zeros(self.L + 1)
+        self.use_transitions = use_transition
 
     @cached_property
     def N(self):
-        return self._data.n_obs
+        """We wouldn't have 4.29 billion samples because lack of money."""
+        return np.uint32(self.data.n_obs)
 
     @cached_property
     def L(self):
-        return self._data.n_vars
+        """Human genome is 6.27~6.37 Gbp (male/female), uint32 upper limit is 4GB,
+        we do not need to load all the pairs at one time, enough for most cases."""
+        return np.uint32(self.data.n_vars)
 
     @cached_property
     def bp_pos(self):
-        return np.append(self._data.var["bp_pos"], self._data.var["bp_pos"][-1:] + 1)
+        return np.append(self.data.var["bp_pos"], self.data.var["bp_pos"][-1:] + 1)
 
     @property
     def r(self):
-        if "recombination_distance" not in self._data.var:
-            self._data.var["recombination_distance"] = np.zeros(self.L)
-        return self._data.var["recombination_distance"]
+        if "recombination_distance" not in self.data.var:
+            self.data.var["recombination_distance"] = np.zeros(self.L)
+        return self.data.var["recombination_distance"]
 
     @r.setter
     def r(self, value):
-        self._data.var["recombination_distance"] = value
+        self.data.var["recombination_distance"] = value
 
     @property
     def dist(self):
-        return self._data.var["dist"]
+        return self.data.var["dist"]
 
     @dist.setter
     def dist(self, value):
-        self._data.var["dist"] = value
+        self.data.var["dist"] = value
 
     @cached_property
     def chunks(self):
@@ -119,7 +127,7 @@ class HapsFile:
 
     def _update_dist(self, dist_path: os.PathLike | None):
         if dist_path is None:
-            dist = np.append(np.diff(self._data.var["bp_pos"]), np.uint32(1))
+            dist = np.append(np.diff(self.data.var["bp_pos"]), np.uint32(1))
         else:
             dist = pd.read_csv(dist_path, sep=r"\s+", skiprows=1, names=("bp", "dist"))[
                 "dist"
@@ -128,7 +136,7 @@ class HapsFile:
             raise ValueError(
                 "SNPs are not sorted by bp or more than one SNP at same position."
             )
-        self._data.var["dist"] = dist
+        self.data.var["dist"] = dist
 
     def make_chunks(
         self,
@@ -154,27 +162,23 @@ class HapsFile:
             max_chunk_size = 2500000
 
         snp = 0
-        window_boundaries = np.zeros(windows_per_section + 1, dtype=np.int32)
-        window_boundaries_overlap = np.zeros(windows_per_section + 1)
+        window_boundaries = np.zeros(windows_per_section + 1, dtype=np.uint32)
+        window_boundaries_overlap = np.zeros(windows_per_section + 1, dtype=np.uint32)
         section_boundary_start = [0]
         section_boundary_end = []
         min_snps_in_window: int = max_chunk_size
-        mean_snps_in_window: float = 0.0
-        num_windows: int
+        num_windows: int = 0
         num_windows_overlap: int = 0
-        overlap_in_section: int
-        chunk_size: int
+        chunk_size: int = 0
         chunk_index: int = 0
-        window_memory_size = 0.0
         while snp < self.L:
             # output chunk bed into fp_haps_chunk and chunk pos, rpos into fp_pos
 
             if snp > 0:
                 # copy the last #overlap snps;
                 assert snp - section_boundary_start[-1] >= overlap
-                overlap_in_section = overlap
-                assert overlap_in_section <= chunk_size
-                snp_section_begin: int = snp - overlap_in_section
+                assert overlap <= chunk_size
+                snp_section_begin: int = snp - overlap
                 section_boundary_start.append(snp_section_begin)
 
                 window_boundaries_overlap[0] = snp_section_begin
@@ -199,12 +203,11 @@ class HapsFile:
                 and chunk_size < max_chunk_size
                 and snp < self.L
             ):
-                num_derived: int = self._data.X[:, it_p].sum()
+                num_derived: int = self.data.X[:, it_p].sum()
 
-                window_memory_size += num_derived * (
-                    self.N + 1
-                )  # + 2.88*N; //2.88 = 72/25 (72 bytes per 2 nodes, 1 tree in 25 snps)
-                # 73 comes from  ((N+1+2*Node)*x + N^2 + 3*N) which I am using as an approximation of memory usage
+                window_memory_size += num_derived * (self.N + 1)
+                # 73 comes from  ((N+1+2*Node)*x + N^2 + 3*N) which
+                # I am using as an approximation of memory usage
                 # I am also assuming one tree in 100 SNPs on average
                 if window_memory_size >= min_memory_size and snps_in_window > 10:
                     if actual_min_memory_size < window_memory_size:
@@ -233,38 +236,43 @@ class HapsFile:
 
             if mean_snps_in_window < 100:
                 logger.warn(
-                    f"Memory allowance should be set {100/mean_snps_in_window} times larger than the current setting using --memory (Default 5GB)."
+                    f"Memory allowance should be set {100 / mean_snps_in_window} times "
+                    "larger than the current setting using --memory (Default 5GB)."
                 )
 
             section_boundary_end.append(snp)
 
+            num_windows_in_section = num_windows + 1
             if snp_begin == 0:
-                num_windows_in_section = num_windows + 1
                 (file_out / f"parameters_c{chunk_index}.bin").write_bytes(
-                    pack(
-                        "III" + "I" * num_windows_in_section,
-                        self.N,
-                        chunk_size,
-                        num_windows_in_section,
-                        *window_boundaries[:num_windows_in_section],
-                    )
+                    np.array(
+                        [
+                            self.N,
+                            chunk_size,
+                            num_windows_in_section,
+                            *window_boundaries[:num_windows_in_section],
+                        ],
+                        dtype="u4",
+                    ).tobytes()
                 )
             else:
-                L_chunk: int = chunk_size + overlap_in_section
+                L_chunk: int = chunk_size + overlap
 
                 window_start: int = window_boundaries_overlap[0]
                 window_boundaries_overlap[:num_windows_overlap] -= window_start
 
                 # Output program parameters into file
                 (file_out / f"parameters_c{chunk_index}.bin").write_bytes(
-                    pack(
-                        "III" + "I" * (num_windows + 1 + num_windows_overlap),
-                        self._data.n_obs,
-                        L_chunk,
-                        num_windows_in_section,
-                        *window_boundaries_overlap[:num_windows_overlap],
-                        *(window_boundaries[: num_windows + 1] - window_start),
-                    )
+                    np.array(
+                        [
+                            self.N,
+                            L_chunk,
+                            num_windows_in_section,
+                            *window_boundaries_overlap[:num_windows_overlap],
+                            *window_boundaries[: num_windows + 1] - window_start,
+                        ],
+                        dtype="u4",
+                    ).tobytes()
                 )
             chunk_index += 1
 
@@ -276,20 +284,24 @@ class HapsFile:
         )
 
         logger.warning(
-            f"Warning: Will use min {2.0 * (4.0 * self.N ** 2 * (max_windows_per_section + 2.0)) / 1e9}GB of hard disc."
+            "Warning: Will use min "
+            f"{2.0 * (4.0 * self.N ** 2 * (max_windows_per_section + 2.0)) / 1e9}"
+            "GB of hard disc."
         )
         actual_min_memory_size += 2 * self.N**2 + 3 * self.N
         actual_min_memory_size *= 4.0 / 1e9  # to GB
         (file_out / "parameters.bin").write_bytes(
-            pack(
-                "IIId" + "I" * 2 * num_chunks,
-                self.N,
-                self.L,
-                num_chunks,
-                actual_min_memory_size,
-                *section_boundary_start,
-                *section_boundary_end,
-            )
+            np.array(
+                [
+                    self.N,
+                    self.L,
+                    num_chunks,
+                    actual_min_memory_size,
+                    *section_boundary_start,
+                    *section_boundary_end,
+                ],
+                dtype=np.uint32,
+            ).tobytes()
         )
 
         m_map = GeneticMapFile(filename_map)
@@ -313,7 +325,7 @@ class HapsFile:
         self.dump(file_out)
 
     def dump(self, output: pathlib.Path):
-        props = self._data.var.apply(pack_props, axis=1)
+        props = self.data.var.apply(pack_props, axis=1)
         snp_bytes = props.index.astype(bytes)
         (output / "props.bin").write_bytes(b"".join(snp_bytes + props))
         for chunk in self.chunks:
@@ -355,14 +367,14 @@ class DataChunk:
         else:
             return (
                 ~is_paired(
-                    self.data._data.var["ancestral"][self.boundaries],
-                    self.data._data.var["alternative"][self.boundaries],
+                    self.data.data.var["ancestral"][self.boundaries],
+                    self.data.data.var["alternative"][self.boundaries],
                 )
             ).astype(int)
 
     @property
     def hap(self):
-        return self.data._data.X[:, self.boundaries]
+        return self.data.data.X[:, self.boundaries]
 
     def dump(self, output: pathlib.Path):
         stem = output / f"chunk_{self.id}"
@@ -371,14 +383,14 @@ class DataChunk:
             content = np.uint32(len(value)).tobytes() + value.tobytes()
             stem.with_suffix("." + prop).write_bytes(content)
         stem.with_suffix(".hap").write_bytes(
-            np.array([self.size, self.data._data.n_obs], dtype="u8").tobytes()
+            np.array([self.size, self.data.N], dtype="u8").tobytes()
             + (self.hap + 48).astype("u1").tobytes("F")
         )
 
 
 class GeneticMapFile:
-    bp: Sequence[int]
-    gen_pos: Sequence[float]
+    bp: pd.Series
+    gen_pos: pd.Series
 
     def __init__(self, path: pathlib.Path) -> None:
         m = pd.read_csv(path, sep=r"\s", engine="python")

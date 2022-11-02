@@ -26,7 +26,7 @@ def test_haps(haps_path, sample_path, genetic_map_path, tmp_path: Path):
     size = calcsize(fmt)
     L_chunk, N = unpack(fmt, content[:size])
     assert L_chunk == data.L and N == data.N and len(content) == L_chunk * N + size
-    assert ([int(chr(c)) for c in content[size:]] == data._data.X.T.reshape(-1)).all()
+    assert ([int(chr(c)) for c in content[size:]] == data.data.X.T.reshape(-1)).all()
     # check chunk_0.dist
     chunk_0_dist = output_dir / "chunk_0.dist"
     assert chunk_0_dist.exists()
@@ -58,3 +58,8 @@ def test_haps(haps_path, sample_path, genetic_map_path, tmp_path: Path):
     length, *states = unpack(f"{data.L + 1}I", content)
     assert length == data.L
     assert all(s == 1 for s in states)
+    # check parameters_c0.bin
+    parameters_c0_bin = output_dir / "parameters_c0.bin"
+    assert parameters_c0_bin.exists()
+    parameters = np.fromfile(parameters_c0_bin, dtype=np.uint32)
+    assert parameters[0] == data.N and parameters[1] == data.L
