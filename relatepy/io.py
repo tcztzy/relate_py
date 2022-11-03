@@ -2,7 +2,6 @@ import os
 import pathlib
 from dataclasses import dataclass
 from functools import cached_property
-from struct import pack
 
 import anndata as ad
 import dask.dataframe as dd
@@ -35,13 +34,13 @@ def is_paired(a: str | pd.Series, b: str | pd.Series) -> bool | pd.Series:
 
 
 def pack_props(row: pd.Series):
-    return pack(
-        "II1024s1024s1024s",
-        row["bp_pos"],
-        row["dist"],
-        f"{row['ID']:\0<1024}".encode(),
-        f"{row['ancestral']:\0<1024}".encode(),
-        f"{row['alternative']:\0<1024}".encode(),
+    return b"".join(
+        (
+            np.array([row["bp_pos"], row["dist"]], dtype="u1").tobytes(),
+            row["ID"].encode().ljust(1024, b"\0"),
+            row["ancestral"].encode().ljust(1024, b"\0"),
+            row["alternative"].encode().ljust(1024, b"\0"),
+        )
     )
 
 
@@ -80,6 +79,7 @@ class HapsFile:
             var=df.drop(columns=sample.ids).compute(),
         )
         adata.var["bp_pos"] = adata.var["bp_pos"].astype("u4")
+        adata.var["ID"] = adata.var["ID"].astype(str)
         self.data = adata
         self._update_dist(dist_path)
         self.rpos = np.zeros(self.L + 1)

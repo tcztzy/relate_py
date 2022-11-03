@@ -3,8 +3,8 @@ from pathlib import Path
 
 import click_log
 
-from ..data import RelateData
 from ..utils import resource_usage
+from ..io import HapsFile
 
 logger = logging.getLogger(__package__)
 click_log.basic_config(logger)
@@ -22,6 +22,6 @@ def chunk(
 ) -> None:
     logger.debug("Parsing data.")
     output.mkdir()
-    RelateData.chunk(
-        haps, sample, genetic_map, dist, output, use_transitions, memory_limit
+    HapsFile(haps, sample, dist, use_transitions).make_chunks(
+        output, genetic_map, min_memory=memory_limit
     )

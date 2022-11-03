@@ -43,26 +43,6 @@ class RelateData:
         else:
             raise ValueError
 
-    @staticmethod
-    def chunk(
-        haps: Path,
-        sample: Path,
-        genetic_map: Path,
-        dist: Path | None,
-        output: Path,
-        use_transitions: bool,
-        memory_limit: float = 5.0,
-    ):
-        Data().MakeChunks(
-            bytes(haps),
-            bytes(sample),
-            bytes(genetic_map),
-            b"unspecified" if dist is None else bytes(dist),
-            bytes(output),
-            use_transitions,
-            memory_limit,
-        )
-
     @property
     def name(self):
         return self.data.name
