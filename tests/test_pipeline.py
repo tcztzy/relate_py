@@ -2,6 +2,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from relatepy import all_pipeline
+from relatepy.pipeline.paint import paint
+from relatepy.io import HapsFile
 
 
 def test_relate(haps_path, sample_path, genetic_map_path, sample_ages_path):
@@ -16,3 +18,10 @@ def test_relate(haps_path, sample_path, genetic_map_path, sample_ages_path):
             sample_ages=sample_ages_path,
             seed=1,
         )
+
+
+def test_paint(haps_path, sample_path, genetic_map_path, tmp_path: Path):
+    (output_path := tmp_path / "output").mkdir()
+    data = HapsFile(haps_path, sample_path)
+    data.make_chunks(output_path, genetic_map_path)
+    paint(data, 0, output_path)

@@ -48,6 +48,7 @@ class HapsFile:
     """Oxford phased haplotype file"""
 
     section_boundaries = ()
+    window_boundaries = []
 
     def __init__(
         self,
@@ -166,7 +167,6 @@ class HapsFile:
         window_boundaries_overlap = np.zeros(windows_per_section + 1, dtype=np.uint32)
         section_boundary_start = [0]
         section_boundary_end = []
-        min_snps_in_window: int = max_chunk_size
         num_windows: int = 0
         num_windows_overlap: int = 0
         chunk_size: int = 0
@@ -212,8 +212,6 @@ class HapsFile:
                 if window_memory_size >= min_memory_size and snps_in_window > 10:
                     if actual_min_memory_size < window_memory_size:
                         actual_min_memory_size = window_memory_size
-                    if min_snps_in_window > snps_in_window:
-                        min_snps_in_window = snps_in_window
                     snps_in_window = 0
                     window_memory_size = 0.0
                     window_boundaries[num_windows] = snp
@@ -225,10 +223,9 @@ class HapsFile:
                 chunk_size += 1
             if actual_min_memory_size < window_memory_size:
                 actual_min_memory_size = window_memory_size
-            if min_snps_in_window > snps_in_window:
-                min_snps_in_window = snps_in_window
             mean_snps_in_window = chunk_size / num_windows
             window_boundaries[num_windows] = snp
+            self.window_boundaries.append(window_boundaries[: num_windows + 1].copy())
             assert num_windows <= windows_per_section
 
             if max_windows_per_section < num_windows:
@@ -250,7 +247,7 @@ class HapsFile:
                             self.N,
                             chunk_size,
                             num_windows_in_section,
-                            *window_boundaries[:num_windows_in_section],
+                            *self.window_boundaries[0],
                         ],
                         dtype="u4",
                     ).tobytes()
@@ -269,7 +266,7 @@ class HapsFile:
                             L_chunk,
                             num_windows_in_section,
                             *window_boundaries_overlap[:num_windows_overlap],
-                            *window_boundaries[: num_windows + 1] - window_start,
+                            *self.window_boundaries[chunk_index] - window_start,
                         ],
                         dtype="u4",
                     ).tobytes()
@@ -307,20 +304,20 @@ class HapsFile:
         m_map = GeneticMapFile(filename_map)
 
         map_index = np.searchsorted(m_map.bp, self.bp_pos, side="right")
-
-        if map_index[-1] < len(m_map.bp) - 2:
-            # while there are still at last one position
-            last_pos = map_index[-1] + 1
-        else:
-            last_pos = map_index[-1]
-        map_diff_index = np.append(map_index, last_pos)
-        map_diff = np.diff(m_map.bp[map_diff_index])
-        rpos = (self.bp_pos - m_map.bp[map_index]) / map_diff * np.diff(
-            m_map.gen_pos[map_diff_index]
-        ) + m_map.gen_pos[map_index]
-        cond1 = (map_diff == 0) | (self.bp_pos < m_map.bp[map_index])
-        self.rpos = np.select([cond1, ~cond1], [m_map.gen_pos[map_index], rpos]) * 1e-2
-        self.r = np.clip(np.diff(self.rpos), lower_bound, np.inf) * 2500
+        # Telomere is the
+        telomere = (map_index == 0) | (map_index == len(m_map.bp))
+        map_pos = np.clip(map_index - 1, 0, None)
+        # fmt: off
+        # NOTE: black always mess up, disable it for the statement
+        rpos = (
+            (self.bp_pos - m_map.bp[map_pos])  # bp distance from previous position
+            / np.diff(m_map.bp)[map_pos]       # bp distance
+            * np.diff(m_map.gen_pos)[map_pos]  # genetic distance
+            + m_map.gen_pos[map_pos]           # previous genetic position
+        )
+        # fmt: on
+        self.rpos = np.where(telomere, m_map.gen_pos[map_pos], rpos) * 1e-2
+        self.r = np.clip(np.diff(self.rpos), lower_bound, None) * 2500
 
         self.dump(file_out)
 
