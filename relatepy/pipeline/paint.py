@@ -8,7 +8,7 @@ class FastPainting:
     lower_rescaling_threshold = 1e-10
     upper_rescaling_threshold = 1.0 / lower_rescaling_threshold
 
-    def __init__(self, nobs: int, theta: float = 0.025) -> None:
+    def __init__(self, nobs: int, theta: float = 0.001) -> None:
         assert theta < 1.0
         self.theta = theta
         self.ntheta = ntheta = 1.0 - theta
@@ -151,9 +151,9 @@ class FastPainting:
         # I am alternating between two rows, to keep the previous and the current values
         alpha_aux = np.zeros((2, data.N), dtype=np.double)
         beta_aux = np.zeros((2, data.N), dtype=np.double)
-        alpha_aux_rowbegin = np.array([0, data.N], dtype=np.uint32)
+        alpha_aux_rowbegin = np.array([0, 0], dtype=np.uint32)
         alpha_aux_rowend = np.array([data.N, data.N], dtype=np.uint32)
-        beta_aux_rowbegin = np.array([0, data.N], dtype=np.uint32)
+        beta_aux_rowbegin = np.array([0, 0], dtype=np.uint32)
         beta_aux_rowend = np.array([data.N, data.N], dtype=np.uint32)
         aux_index = 0
         aux_index_prev = 1
@@ -282,15 +282,15 @@ class FastPainting:
                 it_logscale_alpha += 1
 
                 it_boundary_snp_begin += 1
-                if it_boundary_snp_begin == len(boundary_snp_begin) - 1:
+                if it_boundary_snp_begin == len(boundary_snp_begin):
                     break
 
             it_derived_k += 1
             it_nor_x_theta += 1
 
-        assert it_boundary_snp_begin == len(boundary_snp_begin) - 1
-        assert it1_alpha == alpha.shape[0] - 1
-        assert it_logscale_alpha == len(logscales_alpha) - 1
+        assert it_boundary_snp_begin == len(boundary_snp_begin)
+        assert it1_alpha == alpha.shape[0]
+        assert it_logscale_alpha == len(logscales_alpha)
 
         # Backward algorithm
 
@@ -306,10 +306,10 @@ class FastPainting:
         logscale[aux_index_prev] = normalizing_constant
         beta_sum = 0.0
 
-        it2_sequence = last_snp
-        seq_k = data.data.X[k, it2_sequence]
+        it2_sequence = 0
+        seq_k = data.data.X[k, last_snp]
 
-        beta_aux_rowbegin[aux_index, :] = 1.0
+        beta_aux[aux_index, :] = 1.0
         it2_beta_aux = beta_aux_rowbegin[aux_index]
         while it2_beta_aux != beta_aux_rowend[aux_index]:
             if seq_k > data.data.X[it2_sequence, last_snp]:
@@ -333,7 +333,7 @@ class FastPainting:
             rit1_beta -= 1
             rit_logscale_beta -= 1
             rit_boundarySNP_end -= 1
-            if rit_boundarySNP_end == 0:
+            if rit_boundarySNP_end == -1:
                 break
 
         # SNP < L-1
@@ -450,7 +450,7 @@ class FastPainting:
             it_nor_x_theta -= 1  # I want this to be pointing at snp_next
 
         assert derived_k[it_derived_k] == 0
-        assert rit_boundarySNP_end == 0
+        assert rit_boundarySNP_end == -1
 
         # Dump to file
         for i in range(num_windows):
@@ -483,7 +483,7 @@ def paint(
         data.theta = theta
         data.ntheta = 1 - theta
     else:
-        theta = 0.025
+        theta = 0.001
     if rho is not None:
         data.r *= rho
     else:
