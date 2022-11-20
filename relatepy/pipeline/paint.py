@@ -26,16 +26,9 @@ class FastPainting:
         num_windows = len(window_boundaries) - 1
         boundary_snp_begin = np.zeros(num_windows, dtype=int)
         boundary_snp_end = np.zeros(num_windows, dtype=int)
-        window_index = 1
-        window_end = window_boundaries[1]
         assert window_boundaries[-1] == data.L
 
-        it_boundary_snp_begin = 1
-        it_boundary_snp_end = 0
-
-        r_prob = np.zeros(data.L, dtype=np.double)
         nor_x_theta = np.zeros(data.L, dtype=np.double)
-        derived_k = np.zeros(data.L, dtype=np.int32)
         it_r_prob = 0
         it_nor_x_theta = 0
 
@@ -43,94 +36,24 @@ class FastPainting:
         snp_next: int
         last_snp: np.uint32 = data.L - 1
 
-        derived_k0 = derived_k[0] = 0
         num_derived_sites: int = 1
         # np.where is used to find the first SNP equal to 1, then plus one because
         # `data.r[0]` is always include, so we should start at `data.r[1]`
 
-        snp = np.where(data.data.X[k, 1:] == 1)[0]
-        if snp.size == 0:
-            snp = last_snp
-        else:
-            snp = snp[0] + 1
-        # snp: np.uint64 = min(np.where(data.data.X[k, 1:] == 1)[0] + 1, last_snp)
-        # I (Tang Ziya) guess the original codes want to sum all recombination rate not
-        # equal to 1 from the very beginning.
-        r_prob[it_r_prob] = data.r[0] + data.r[1:snp].sum()
+        derived_k = np.flatnonzero(data.data.X[k] == 1)
+        if 0 not in derived_k:
+            derived_k = np.append(0, derived_k)
+        if last_snp not in derived_k:
+            derived_k = np.append(derived_k, last_snp)
+        num_derived_sites = len(derived_k)
+        snp = derived_k[1]
+        r_sum = np.clip([_.sum() for _ in np.split(data.r, derived_k[1:])], 0, -np.log(0.01))
+        r_prob = np.append(1 - np.exp(-r_sum), 1)
+        nor_x_theta = -r_sum + self.log_ntheta
 
-        if derived_k0 < window_end <= snp:
-            while window_end <= snp:
-                boundary_snp_end[it_boundary_snp_end] = snp
-                it_boundary_snp_end += 1
-                boundary_snp_begin[it_boundary_snp_begin] = derived_k0
-                it_boundary_snp_begin += 1
-                window_index += 1
-                window_end = window_boundaries[window_index]
-        it_derived_k = 1
-
-        nor_x_theta[it_nor_x_theta] = -r_prob[it_r_prob] + self.log_ntheta
-        r_prob[it_r_prob] = 1.0 - exp(-r_prob[it_r_prob])
-        if r_prob[it_r_prob] > 0.99:
-            r_prob[it_r_prob] = 0.99
-            nor_x_theta[it_nor_x_theta] = self.log_small + self.log_ntheta
-
-        it_r_prob += 1
-        it_nor_x_theta += 1
-
-        r_prob[it_r_prob] = data.r[snp]
-        derived_k[it_derived_k] = snp
-
-        snp += 1
-        num_derived_sites += 1
-        while snp < data.L:
-            # skip all non-derived site
-            while data.data.X[k, snp] != 1 and snp != last_snp:
-                r_prob[it_r_prob] += data.r[snp]
-                snp += 1
-
-            if derived_k[it_derived_k] < window_end <= snp:
-                while window_end <= snp:
-                    boundary_snp_end[it_boundary_snp_end] = snp
-                    it_boundary_snp_end += 1
-                    boundary_snp_begin[it_boundary_snp_begin] = derived_k[it_derived_k]
-                    it_boundary_snp_begin += 1
-                    window_index += 1
-                    window_end = window_boundaries[window_index]
-
-            # this is a derived site
-            it_derived_k += 1
-
-            nor_x_theta[it_nor_x_theta] = -r_prob[it_r_prob] + self.log_ntheta
-            r_prob[it_r_prob] = 1.0 - exp(-r_prob[it_r_prob])
-            if r_prob[it_r_prob] > 0.99:
-                r_prob[it_r_prob] = 0.99
-                nor_x_theta[it_nor_x_theta] = self.log_small + self.log_ntheta
-
-            it_r_prob += 1
-            it_nor_x_theta += 1
-
-            derived_k[it_derived_k] = snp
-            r_prob[it_r_prob] = data.r[snp]
-
-            snp += 1
-            num_derived_sites += 1
-        nor_x_theta[it_nor_x_theta] = -r_prob[it_r_prob] + self.log_ntheta
-        r_prob[it_r_prob] = 1.0 - exp(-r_prob[it_r_prob])
-        if r_prob[it_r_prob] > 0.99:
-            r_prob[it_r_prob] = 0.99
-            nor_x_theta[it_nor_x_theta] = self.log_small + self.log_ntheta
-
-        it_r_prob += 1
-        r_prob[it_r_prob] = 1  # just a technicality
-
-        derived_k = derived_k[:num_derived_sites]
-        r_prob = r_prob[:num_derived_sites+1]
-        nor_x_theta = nor_x_theta[:num_derived_sites]
-
-        boundary_snp_end[it_boundary_snp_end] = last_snp
-        it_boundary_snp_end += 1
-        assert it_boundary_snp_begin == len(boundary_snp_begin)
-        assert it_boundary_snp_end == len(boundary_snp_end)
+        i = np.searchsorted(derived_k, window_boundaries[1:-1])
+        boundary_snp_begin = np.append(0, derived_k[i])
+        boundary_snp_end = np.append(window_boundaries[1:-1], last_snp)
 
         it_derived_k = 1
         it_r_prob = 0
@@ -151,10 +74,6 @@ class FastPainting:
         # I am alternating between two rows, to keep the previous and the current values
         alpha_aux = np.zeros((2, data.N), dtype=np.double)
         beta_aux = np.zeros((2, data.N), dtype=np.double)
-        alpha_aux_rowbegin = np.array([0, 0], dtype=np.uint32)
-        alpha_aux_rowend = np.array([data.N, data.N], dtype=np.uint32)
-        beta_aux_rowbegin = np.array([0, 0], dtype=np.uint32)
-        beta_aux_rowend = np.array([data.N, data.N], dtype=np.uint32)
         aux_index = 0
         aux_index_prev = 1
 
@@ -178,9 +97,9 @@ class FastPainting:
             # store the start boundary of the current chunk
 
             # copy to alpha, logscale
-            it2_alpha_aux = alpha_aux_rowbegin[aux_index]
+            it2_alpha_aux = 0
             it2_alpha = 0
-            while it2_alpha_aux != alpha_aux_rowend[aux_index]:
+            while it2_alpha_aux != data.N:
                 alpha[it1_alpha, it2_alpha] = alpha_aux[aux_index, it2_alpha_aux]
                 it2_alpha_aux += 1
                 it2_alpha += 1
@@ -214,11 +133,11 @@ class FastPainting:
                 logscale[aux_index] += nor_x_theta[it_nor_x_theta]
 
                 it2_sequence = 0
-                it2_alpha_aux_prev = alpha_aux_rowbegin[aux_index_prev]
+                it2_alpha_aux_prev = 0
 
-                it2_alpha_aux = alpha_aux_rowbegin[aux_index]
+                it2_alpha_aux = 0
 
-                while it2_alpha_aux != alpha_aux_rowend[aux_index]:
+                while it2_alpha_aux != data.N:
                     alpha_aux[aux_index, it2_alpha_aux] = (
                         alpha_aux[aux_index_prev, it2_alpha_aux_prev] + r_x_alpha_sum
                     )
@@ -230,22 +149,22 @@ class FastPainting:
                     it2_alpha_aux_prev += 1
                     it2_sequence += 1
 
-                it2_alpha_aux = alpha_aux_rowbegin[aux_index]
+                it2_alpha_aux = 0
                 alpha_aux[aux_index, k] = 0.0
                 alpha_sum = alpha_aux[aux_index].sum()
             else:
                 logscale[aux_index_prev] = logscale[aux_index]
                 logscale[aux_index] += log(self.ntheta / self.Nminusone * alpha_sum)
-                it2_alpha_aux = alpha_aux_rowbegin[aux_index]
+                it2_alpha_aux = 0
                 it2_sequence = 0
-                while it2_alpha_aux != alpha_aux_rowend[aux_index]:
+                while it2_alpha_aux != data.N:
                     derived = np.double(seq_k > data.data.X[it2_sequence, snp])
                     alpha_aux[aux_index, it2_alpha_aux] = (
                         derived * self.theta_ratio + 1.0
                     )
                     it2_alpha_aux += 1
                     it2_sequence += 1
-                it2_alpha_aux = alpha_aux_rowbegin[aux_index]
+                it2_alpha_aux = 0
                 alpha_aux[aux_index, k] = 0.0
                 alpha_sum = alpha_aux[aux_index].sum()
 
@@ -271,9 +190,9 @@ class FastPainting:
             if it_boundary_snp_begin != len(boundary_snp_begin):
                 # store first the end boundary of the current chunk and then the start boundary of the next chunk
                 # copy to alpha, logscale
-                it2_alpha_aux = alpha_aux_rowbegin[aux_index]
+                it2_alpha_aux = 0
                 it2_alpha = 0
-                while it2_alpha_aux != alpha_aux_rowend[aux_index]:
+                while it2_alpha_aux != data.N:
                     alpha[it1_alpha, it2_alpha] = alpha_aux[aux_index, it2_alpha_aux]
                     it2_alpha_aux += 1
                     it2_alpha += 1
@@ -310,8 +229,8 @@ class FastPainting:
         seq_k = data.data.X[k, last_snp]
 
         beta_aux[aux_index, :] = 1.0
-        it2_beta_aux = beta_aux_rowbegin[aux_index]
-        while it2_beta_aux != beta_aux_rowend[aux_index]:
+        it2_beta_aux = 0
+        while it2_beta_aux != data.N:
             if seq_k > data.data.X[it2_sequence, last_snp]:
                 beta_sum += self.theta
             else:
@@ -325,7 +244,7 @@ class FastPainting:
             # copy beta
             it2_beta = 0
             it2_beta_aux = 0
-            while it2_beta_aux != beta_aux_rowend[aux_index]:
+            while it2_beta_aux != data.N:
                 beta[rit1_beta, it2_beta] = beta_aux[aux_index, it2_beta_aux]
                 it2_beta += 1
                 it2_beta_aux += 1
@@ -363,9 +282,9 @@ class FastPainting:
                 beta_sum_theta = r_x_beta_sum / self.theta - beta_sum_oneminustheta
                 it2_sequence = 0
 
-                it2_beta_aux_next = beta_aux_rowbegin[aux_index_prev]
-                it2_beta_aux = beta_aux_rowbegin[aux_index]
-                while it2_beta_aux != beta_aux_rowend[aux_index]:
+                it2_beta_aux_next = 0
+                it2_beta_aux = 0
+                while it2_beta_aux != data.N:
                     derived = np.double(seq_k > data.data.X[it2_sequence, snp_next])
                     beta_aux[aux_index, it2_beta_aux] = (
                         beta_aux[aux_index_prev, it2_beta_aux_next]
@@ -381,9 +300,9 @@ class FastPainting:
 
                 it2_sequence = 0
                 seq_k = data.data.X[k, snp]
-                it2_beta_aux = beta_aux_rowbegin[aux_index]
+                it2_beta_aux = 0
                 beta_aux[aux_index, k] = 0
-                while it2_beta_aux != beta_aux_rowend[aux_index]:
+                while it2_beta_aux != data.N:
                     if seq_k > data.data.X[it2_sequence, snp]:
                         beta_sum += self.theta * beta_aux[aux_index, it2_beta_aux]
                     else:
@@ -397,8 +316,8 @@ class FastPainting:
                 )
                 beta_sum = 0.0
 
-                it2_beta_aux = beta_aux_rowbegin[aux_index]
-                while it2_beta_aux != beta_aux_rowend[aux_index]:
+                it2_beta_aux = 0
+                while it2_beta_aux != data.N:
                     if seq_k > data.data.X[it2_sequence, snp]:
                         beta_sum += self.theta * beta_aux[aux_index, it2_beta_aux]
                     else:
@@ -413,8 +332,8 @@ class FastPainting:
                 or r_x_beta_sum > self.upper_rescaling_threshold
             ):
                 tmp = r_x_beta_sum
-                it2_beta_aux = beta_aux_rowbegin[aux_index]
-                while it2_beta_aux < beta_aux_rowend[aux_index]:
+                it2_beta_aux = 0
+                while it2_beta_aux < data.N:
                     beta_aux[aux_index, it2_beta_aux] /= tmp
                     it2_beta_aux += 1
                 logscale[aux_index] += log(tmp)
@@ -433,8 +352,8 @@ class FastPainting:
                     # store first the start boundary of the current chunk and then the end boundary of the next chunk
 
                     it2_beta = 0
-                    it2_beta_aux = beta_aux_rowbegin[aux_index]
-                    while it2_beta_aux != beta_aux_rowend[aux_index]:
+                    it2_beta_aux = 0
+                    while it2_beta_aux != data.N:
                         beta[rit1_beta, it2_beta] = beta_aux[aux_index, it2_beta_aux]
                         it2_beta += 1
                         it2_beta_aux += 1
