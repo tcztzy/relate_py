@@ -47,7 +47,9 @@ class FastPainting:
             derived_k = np.append(derived_k, last_snp)
         num_derived_sites = len(derived_k)
         snp = derived_k[1]
-        r_sum = np.clip([_.sum() for _ in np.split(data.r, derived_k[1:])], 0, -np.log(0.01))
+        r_sum = np.clip(
+            [_.sum() for _ in np.split(data.r, derived_k[1:])], 0, -np.log(0.01)
+        )
         r_prob = np.append(1 - np.exp(-r_sum), 1)
         nor_x_theta = -r_sum + self.log_ntheta
 
@@ -81,14 +83,9 @@ class FastPainting:
         logscale: list = [0.0, 0.0]
 
         snp = derived_k[0]
-
-        seq_k = data.data.X[k, snp]
-        derived = (data.data.X[:, snp] < seq_k).astype(np.double)
-        alpha_aux[aux_index] = np.where(
-            np.arange(data.data.n_obs) == k,
-            0,
-            derived * self.prior_theta + self.prior_ntheta,
-        )
+        derived = data.data.X[:, snp] < data.data.X[k, snp]
+        alpha_aux[aux_index] = np.where(derived, self.theta, self.ntheta) / (data.N - 1)
+        alpha_aux[aux_index, k] = 0
 
         alpha_sum = alpha_aux[aux_index].sum()
 
@@ -97,12 +94,7 @@ class FastPainting:
             # store the start boundary of the current chunk
 
             # copy to alpha, logscale
-            it2_alpha_aux = 0
-            it2_alpha = 0
-            while it2_alpha_aux != data.N:
-                alpha[it1_alpha, it2_alpha] = alpha_aux[aux_index, it2_alpha_aux]
-                it2_alpha_aux += 1
-                it2_alpha += 1
+            alpha[it1_alpha] = alpha_aux[aux_index]
             logscales_alpha[it_logscale_alpha] = logscale[aux_index]
             it_logscale_alpha += 1
             it1_alpha += 1
@@ -131,43 +123,16 @@ class FastPainting:
             if r_prob[it_r_prob] < 1:
                 logscale[aux_index] = logscale[aux_index_prev]
                 logscale[aux_index] += nor_x_theta[it_nor_x_theta]
-
-                it2_sequence = 0
-                it2_alpha_aux_prev = 0
-
-                it2_alpha_aux = 0
-
-                while it2_alpha_aux != data.N:
-                    alpha_aux[aux_index, it2_alpha_aux] = (
-                        alpha_aux[aux_index_prev, it2_alpha_aux_prev] + r_x_alpha_sum
-                    )
-                    derived = np.double(seq_k > data.data.X[it2_sequence, snp])
-                    alpha_aux[aux_index, it2_alpha_aux] *= (
-                        derived * self.theta_ratio + 1
-                    )
-                    it2_alpha_aux += 1
-                    it2_alpha_aux_prev += 1
-                    it2_sequence += 1
-
-                it2_alpha_aux = 0
-                alpha_aux[aux_index, k] = 0.0
-                alpha_sum = alpha_aux[aux_index].sum()
+                derived = seq_k > data.data.X[:, snp]
+                alpha_aux[aux_index] = alpha_aux[aux_index_prev] + r_x_alpha_sum
+                alpha_aux[aux_index] *= np.where(derived, self.theta / self.ntheta, 1)
             else:
                 logscale[aux_index_prev] = logscale[aux_index]
                 logscale[aux_index] += log(self.ntheta / self.Nminusone * alpha_sum)
-                it2_alpha_aux = 0
-                it2_sequence = 0
-                while it2_alpha_aux != data.N:
-                    derived = np.double(seq_k > data.data.X[it2_sequence, snp])
-                    alpha_aux[aux_index, it2_alpha_aux] = (
-                        derived * self.theta_ratio + 1.0
-                    )
-                    it2_alpha_aux += 1
-                    it2_sequence += 1
-                it2_alpha_aux = 0
-                alpha_aux[aux_index, k] = 0.0
-                alpha_sum = alpha_aux[aux_index].sum()
-
+                derived = seq_k > data.data.X[:, snp]
+                alpha_aux[aux_index] = np.where(derived, self.theta / self.ntheta, 1)
+            alpha_aux[aux_index, k] = 0.0
+            alpha_sum = alpha_aux[aux_index].sum()
             r_x_alpha_sum = alpha_sum
 
             # check if alpha_sums get too small, if they do, rescale
@@ -175,9 +140,8 @@ class FastPainting:
                 r_x_alpha_sum < self.lower_rescaling_threshold
                 or r_x_alpha_sum > self.upper_rescaling_threshold
             ):
-                tmp = r_x_alpha_sum
-                alpha_aux[aux_index] /= tmp
-                logscale[aux_index] += log(tmp)
+                alpha_aux[aux_index] /= r_x_alpha_sum
+                logscale[aux_index] += log(r_x_alpha_sum)
                 r_x_alpha_sum = 1.0
                 assert logscale[aux_index] < float("inf")
 
@@ -190,12 +154,7 @@ class FastPainting:
             if it_boundary_snp_begin != len(boundary_snp_begin):
                 # store first the end boundary of the current chunk and then the start boundary of the next chunk
                 # copy to alpha, logscale
-                it2_alpha_aux = 0
-                it2_alpha = 0
-                while it2_alpha_aux != data.N:
-                    alpha[it1_alpha, it2_alpha] = alpha_aux[aux_index, it2_alpha_aux]
-                    it2_alpha_aux += 1
-                    it2_alpha += 1
+                alpha[it1_alpha] = alpha_aux[aux_index]
                 logscales_alpha[it_logscale_alpha] = logscale[aux_index]
                 it1_alpha += 1
                 it_logscale_alpha += 1
