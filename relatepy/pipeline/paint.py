@@ -68,7 +68,6 @@ class FastPainting:
         alpha_aux = np.zeros((2, data.N), dtype=np.double)
         aux_index = 1
         aux_index_prev = 0
-        beta_sum: np.double
         logscale: list = [0.0, 0.0]
         derived = data.data.X < data.data.X[k]
         it_boundary_snp_begin = 0
@@ -104,7 +103,6 @@ class FastPainting:
                 alpha_aux[aux_index] /= alpha_sum
                 logscale[aux_index] += log(alpha_sum)
                 alpha_sum = 1.0
-                assert logscale[aux_index] < float("inf")
 
             if it_boundary_snp_begin != len(boundary_snp_begin):
                 # store first the end boundary of the current chunk and then the start boundary of the next chunk
@@ -114,7 +112,6 @@ class FastPainting:
                     logscales_alpha[it_logscale_alpha] = logscale[aux_index]
                     it1_alpha += 1
                     it_logscale_alpha += 1
-
                     it_boundary_snp_begin += 1
                     if it_boundary_snp_begin == len(boundary_snp_begin):
                         break
@@ -129,43 +126,19 @@ class FastPainting:
         beta_aux = np.zeros((2, data.N), dtype=np.double)
         beta_aux[aux_index] = 1.0
         beta_sum = np.where(derived[:, last_snp], self.theta, self.ntheta).sum() - self.ntheta
-
         rit_boundarySNP_end = len(boundary_snp_end) - 1
-        while boundary_snp_end[rit_boundarySNP_end] == last_snp:
-            # copy beta
-            it2_beta = 0
-            it2_beta_aux = 0
-            while it2_beta_aux != data.N:
-                beta[rit1_beta, it2_beta] = beta_aux[aux_index, it2_beta_aux]
-                it2_beta += 1
-                it2_beta_aux += 1
-            logscales_beta[rit_logscale_beta] = logscale[aux_index]
-            rit1_beta -= 1
-            rit_logscale_beta -= 1
-            rit_boundarySNP_end -= 1
-            if rit_boundarySNP_end == -1:
-                break
-
-        # SNP < L-1
-        if r_prob[it_r_prob] < 1.0:
-            r_x_beta_sum = (
-                r_prob[it_r_prob]
-                / ((1.0 - r_prob[it_r_prob]) * self.Nminusone)
-                * beta_sum
-            )
-        else:
-            r_x_beta_sum = beta_sum
-        for snp in reversed(derived_k[:-1]):
-            aux_index = (aux_index + 1) % 2
+        for i, snp in enumerate(reversed(derived_k)):
+            i = num_derived_sites - 1 - i
+            aux_index = i % 2
             aux_index_prev = 1 - aux_index
 
-            if r_prob[it_r_prob] < 1.0:
-
+            if r_prob[i] < 1.0:
+                r = r_prob[i] / ((1.0 - r_prob[i]) * self.Nminusone)
                 # inner loop of backwards algorithm
-                logscale[aux_index] = logscale[aux_index_prev] + nor_x_theta[it_nor_x_theta]
+                logscale[aux_index] = logscale[aux_index_prev] + nor_x_theta[i]
                 beta_aux[aux_index] = (
                     beta_aux[aux_index_prev]
-                    + r_x_beta_sum
+                    + r * beta_sum
                     / np.where(derived[:, snp], self.theta, self.ntheta)
                 )
                 beta_aux[aux_index] *= np.where(
@@ -178,47 +151,25 @@ class FastPainting:
                 )
             beta_aux[aux_index, k] = 0
             beta_sum = (np.where(derived[:, snp], self.theta, self.ntheta) * beta_aux[aux_index]).sum()
-            r_x_beta_sum = beta_sum
             if (
-                r_x_beta_sum < LOWER_RESCALING_THRESHOLD
-                or r_x_beta_sum > UPPER_RESCALING_THRESHOLD
+                beta_sum < LOWER_RESCALING_THRESHOLD
+                or beta_sum > UPPER_RESCALING_THRESHOLD
             ):
-                tmp = r_x_beta_sum
-                it2_beta_aux = 0
-                while it2_beta_aux < data.N:
-                    beta_aux[aux_index, it2_beta_aux] /= tmp
-                    it2_beta_aux += 1
-                logscale[aux_index] += log(tmp)
-                r_x_beta_sum = 1.0
-                assert logscale[aux_index] < float("inf")
-
-            it_r_prob -= 1
-            if r_prob[it_r_prob] < 1.0:
-                r_x_beta_sum *= r_prob[it_r_prob] / (
-                    (1.0 - r_prob[it_r_prob]) * self.Nminusone
-                )
+                beta_aux[aux_index] /= beta_sum
+                logscale[aux_index] += log(beta_sum)
+                beta_sum = 1.0
 
             # update beta and topology
-            if rit_boundarySNP_end != 0:
+            if rit_boundarySNP_end >= 0:
                 while boundary_snp_end[rit_boundarySNP_end] == snp:
                     # store first the start boundary of the current chunk and then the end boundary of the next chunk
-
-                    it2_beta = 0
-                    it2_beta_aux = 0
-                    while it2_beta_aux != data.N:
-                        beta[rit1_beta, it2_beta] = beta_aux[aux_index, it2_beta_aux]
-                        it2_beta += 1
-                        it2_beta_aux += 1
-
+                    beta[rit1_beta] = beta_aux[aux_index]
                     logscales_beta[rit_logscale_beta] = logscale[aux_index]
                     rit1_beta -= 1
                     rit_logscale_beta -= 1
                     rit_boundarySNP_end -= 1
-                    if rit_boundarySNP_end == 0:
+                    if rit_boundarySNP_end == -1:
                         break
-            it_nor_x_theta -= 1  # I want this to be pointing at snp_next
-
-        assert rit_boundarySNP_end == -1
 
         # Dump to file
         for i in range(num_windows):
