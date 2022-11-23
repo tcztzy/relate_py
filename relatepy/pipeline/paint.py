@@ -154,14 +154,15 @@ class FastPainting:
             if it_boundary_snp_begin != len(boundary_snp_begin):
                 # store first the end boundary of the current chunk and then the start boundary of the next chunk
                 # copy to alpha, logscale
-                alpha[it1_alpha] = alpha_aux[aux_index]
-                logscales_alpha[it_logscale_alpha] = logscale[aux_index]
-                it1_alpha += 1
-                it_logscale_alpha += 1
+                while boundary_snp_begin[it_boundary_snp_begin] == snp:
+                    alpha[it1_alpha] = alpha_aux[aux_index]
+                    logscales_alpha[it_logscale_alpha] = logscale[aux_index]
+                    it1_alpha += 1
+                    it_logscale_alpha += 1
 
-                it_boundary_snp_begin += 1
-                if it_boundary_snp_begin == len(boundary_snp_begin):
-                    break
+                    it_boundary_snp_begin += 1
+                    if it_boundary_snp_begin == len(boundary_snp_begin):
+                        break
 
             it_derived_k += 1
             it_nor_x_theta += 1
