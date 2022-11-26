@@ -1,8 +1,8 @@
-from math import log
 import pathlib
-from relatepy.io import HapsFile
-import numpy as np
+import warnings
 
+import numpy as np
+from relatepy.io import HapsFile
 
 LOWER_RESCALING_THRESHOLD = 1e-10
 UPPER_RESCALING_THRESHOLD = 1e10
@@ -23,14 +23,12 @@ class FastPainting:
     def paint_stepping_stones(
         self, data: HapsFile, chunk_index, k, paint_dir: pathlib.Path
     ):
+        if data.data.n_obs < 100:
+            warnings.warn(f"Sample number `{data.data.n_obs}` is too small.")
         window_boundaries = data.window_boundaries[chunk_index]
         num_windows = len(window_boundaries) - 1
-        boundary_snp_begin = np.zeros(num_windows, dtype=int)
-        boundary_snp_end = np.zeros(num_windows, dtype=int)
-        assert window_boundaries[-1] == data.L
-
-        it_r_prob = 0
-        it_nor_x_theta = 0
+        if window_boundaries[-1] != data.L:
+            raise ValueError("")
         last_snp: np.uint32 = data.L - 1
         derived_k = np.flatnonzero(data.data.X[k] == 1)
         if 0 not in derived_k:
@@ -38,7 +36,6 @@ class FastPainting:
         if last_snp not in derived_k:
             derived_k = np.append(derived_k, last_snp)
         num_derived_sites = len(derived_k)
-        snp = derived_k[1]
         r_sum = np.clip(
             [_.sum() for _ in np.split(data.r, derived_k[1:])], 0, -np.log(0.01)
         )
@@ -48,10 +45,6 @@ class FastPainting:
         i = np.searchsorted(derived_k, window_boundaries[1:-1])
         boundary_snp_begin = np.append(0, derived_k[i])
         boundary_snp_end = np.append(window_boundaries[1:-1], last_snp)
-
-        it_r_prob = 0
-        it_nor_x_theta = 0
-
         alpha = np.zeros((num_windows, data.N), dtype=np.float32)
         beta = np.zeros((num_windows, data.N), dtype=np.float32)
         logscales_alpha = np.zeros(num_windows, dtype=np.float32)
@@ -66,8 +59,6 @@ class FastPainting:
         # alpha_aux and beta_aux contain the alpha and beta values along the sequence.
         # I am alternating between two rows, to keep the previous and the current values
         alpha_aux = np.zeros((2, data.N), dtype=np.double)
-        aux_index = 1
-        aux_index_prev = 0
         logscale: list = [0.0, 0.0]
         derived = data.data.X < data.data.X[k]
         it_boundary_snp_begin = 0
@@ -88,7 +79,7 @@ class FastPainting:
             else:
                 r = 1
                 logscale[aux_index_prev] = logscale[aux_index]
-                logscale[aux_index] += log(self.ntheta / self.Nminusone * alpha_sum)
+                logscale[aux_index] += np.log(self.ntheta / self.Nminusone * alpha_sum)
                 alpha_aux[aux_index] = np.where(
                     derived[:, snp], self.theta / self.ntheta, 1
                 )
@@ -101,7 +92,7 @@ class FastPainting:
                 or alpha_sum > UPPER_RESCALING_THRESHOLD
             ):
                 alpha_aux[aux_index] /= alpha_sum
-                logscale[aux_index] += log(alpha_sum)
+                logscale[aux_index] += np.log(alpha_sum)
                 alpha_sum = 1.0
 
             if it_boundary_snp_begin != len(boundary_snp_begin):
@@ -116,12 +107,9 @@ class FastPainting:
                     if it_boundary_snp_begin == len(boundary_snp_begin):
                         break
         # Backward algorithm
-
         normalizing_constant = np.double(
-            log(self.Nminusone) - num_derived_sites * self.log_ntheta
+            np.log(self.Nminusone) - num_derived_sites * self.log_ntheta
         )
-
-        # SNP L-1
         logscale = [normalizing_constant, normalizing_constant]
         beta_aux = np.zeros((2, data.N), dtype=np.double)
         beta_aux[aux_index] = 1.0
@@ -146,7 +134,7 @@ class FastPainting:
                 )
             else:
                 logscale[aux_index_prev] = logscale[aux_index]
-                logscale[aux_index_prev] += log(
+                logscale[aux_index_prev] += np.log(
                     self.ntheta / self.Nminusone * alpha_sum
                 )
             beta_aux[aux_index, k] = 0
@@ -156,7 +144,7 @@ class FastPainting:
                 or beta_sum > UPPER_RESCALING_THRESHOLD
             ):
                 beta_aux[aux_index] /= beta_sum
-                logscale[aux_index] += log(beta_sum)
+                logscale[aux_index] += np.log(beta_sum)
                 beta_sum = 1.0
 
             # update beta and topology
@@ -176,7 +164,7 @@ class FastPainting:
             startinterval = window_boundaries[i]
             endinterval = window_boundaries[i + 1] - 1
             pfile = paint_dir / f"relate_{i}.bin"
-            with pfile.open("wb") as fp:
+            with pfile.open("ab") as fp:
                 fp.write(
                     np.array([startinterval, endinterval], dtype=np.int32).tobytes()
                 )
