@@ -17,6 +17,8 @@ dependencies = [
 [project.optional-dependencies]
 test = ["pytest>=6.0", "pytest-cov>=4.0"]
 docs = ["myst-parser>=0.18,<0.19"]
+lint = ["black>=22.10.0", "mypy>=0.991"]
+dev = ["relatepy[test,docs,lint]"]
 
 [build-system]
 requires = ["pyproject-toml==0.0.10", "cython==3.0.0a11", "setuptools-rust>=1.4.0"]
