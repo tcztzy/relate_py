@@ -8,7 +8,7 @@
 
 ```console
 $ pip install relatepy  # or
-$ pip install git+https://github.com/tcztzy/relate_py
+$ pip install git+https://github.com/tcztzy/relatepy
 ```
 
 ## Build from source
@@ -23,8 +23,8 @@ Build requirements:
 CMake is not required since we have Python's build tool chain.
 
 ```console
-$ git clone https://github.com/tcztzy/relate_py
-$ cd relate_py
+$ git clone https://github.com/tcztzy/relatepy
+$ cd relatepy
 $ git submodule init
 $ # C++20 had a <version> header, so you should remove the version file in gzstream directory
 $ rm relate/include/src/gzstream/version
