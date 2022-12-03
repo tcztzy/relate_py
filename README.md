@@ -35,3 +35,24 @@ $ pip -m build
 ## Environments
 
 Set `RELATEPY_RESOURCE_USAGE` to enable the resource usage report (also need `--verbosity=DEBUG`).
+
+## Roadmap
+
+- [ ] Refactoring
+   - [x] Chunk data
+     - [x] Manually
+     - [ ] AnnData/Dask chunk
+   - [x] Paint
+     - [x] Logically equivalence
+     - [x] Simplified
+     - [ ] Speed up
+   - [ ] Build topology
+   - [ ] Find equivalent branches
+   - [ ] Get branch length
+   - [ ] Combine sections
+   - [ ] Finalize
+- [ ] Visualizing scripting
+  - [x] Final results plotting
+    - [x] Effective population size
+  - [ ] Intermediate process plotting
+    - [ ] Painting
