@@ -1,5 +1,6 @@
 import os
 import pathlib
+import warnings
 from dataclasses import dataclass
 from functools import cached_property
 
@@ -10,7 +11,9 @@ import pandas as pd
 
 from relatepy.utils import logger
 
-lower_bound = 1e-10
+LOWER_BOUND = 1e-10
+
+warnings.filterwarnings("ignore", category=ad.ImplicitModificationWarning)
 
 
 def pair(p: str | pd.Series) -> str | pd.Series:
@@ -232,7 +235,7 @@ class HapsFile:
                 max_windows_per_section = num_windows
 
             if mean_snps_in_window < 100:
-                logger.warn(
+                logger.warning(
                     f"Memory allowance should be set {100 / mean_snps_in_window} times "
                     "larger than the current setting using --memory (Default 5GB)."
                 )
@@ -280,9 +283,9 @@ class HapsFile:
             zip(section_boundary_start, section_boundary_end)
         )
 
-        logger.warning(
-            "Warning: Will use min "
-            f"{2.0 * (4.0 * self.N ** 2 * (max_windows_per_section + 2.0)) / 1e9}"
+        logger.debug(
+            "Will use min "
+            f"{2.0 * (4.0 * self.N ** 2 * (max_windows_per_section + 2.0)) / 2**30}"
             "GB of hard disc."
         )
         actual_min_memory_size += 2 * self.N**2 + 3 * self.N
@@ -316,8 +319,10 @@ class HapsFile:
             + m_map.gen_pos[map_pos]           # previous genetic position
         )
         # fmt: on
+        # 1e-2 convert cM to M
         self.rpos = np.where(telomere, m_map.gen_pos[map_pos], rpos) * 1e-2
-        self.r = np.clip(np.diff(self.rpos), lower_bound, None) * 2500
+        # what the meaning of magic number 2500?
+        self.r = np.clip(np.diff(self.rpos), LOWER_BOUND, None) * 2500
 
         self.dump(file_out)
 
