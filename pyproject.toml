@@ -15,7 +15,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=6.0", "pytest-cov"]
+test = ["pytest>=6.0", "pytest-cov>=4.0"]
+docs = ["myst-parser>=0.18,<0.19"]
 
 [build-system]
 requires = ["pyproject-toml==0.0.10", "cython==3.0.0a11", "setuptools-rust>=1.4.0"]
