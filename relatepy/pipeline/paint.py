@@ -59,7 +59,7 @@ class FastPainting:
         # alpha_aux and beta_aux contain the alpha and beta values along the sequence.
         # I am alternating between two rows, to keep the previous and the current values
         alpha_aux = np.zeros((2, data.N), dtype=np.double)
-        logscale: list = [0.0, 0.0]
+        logscale: list = [0.0, -nor_x_theta[0]]
         derived = data.data.X < data.data.X[k]
         it_boundary_snp_begin = 0
         alpha_sum = self.ntheta / r_prob[0] * (1 - r_prob[0])
@@ -116,36 +116,38 @@ class FastPainting:
         beta_sum = np.where(derived[:, last_snp], self.theta, self.ntheta).sum() - self.ntheta
         rit_boundarySNP_end = len(boundary_snp_end) - 1
         for i, snp in enumerate(reversed(derived_k)):
+            last = i == 0
             i = num_derived_sites - 1 - i
             aux_index = i % 2
             aux_index_prev = 1 - aux_index
-
-            if r_prob[i] < 1.0:
-                r = r_prob[i] / ((1.0 - r_prob[i]) * self.Nminusone)
-                # inner loop of backwards algorithm
-                logscale[aux_index] = logscale[aux_index_prev] + nor_x_theta[i]
-                beta_aux[aux_index] = (
-                    beta_aux[aux_index_prev]
-                    + r * beta_sum
-                    / np.where(derived[:, snp], self.theta, self.ntheta)
-                )
-                beta_aux[aux_index] *= np.where(
-                    derived[:, snp], self.theta/self.ntheta, 1
-                )
-            else:
-                logscale[aux_index_prev] = logscale[aux_index]
-                logscale[aux_index_prev] += np.log(
-                    self.ntheta / self.Nminusone * alpha_sum
-                )
-            beta_aux[aux_index, k] = 0
-            beta_sum = (np.where(derived[:, snp], self.theta, self.ntheta) * beta_aux[aux_index]).sum()
-            if (
-                beta_sum < LOWER_RESCALING_THRESHOLD
-                or beta_sum > UPPER_RESCALING_THRESHOLD
-            ):
-                beta_aux[aux_index] /= beta_sum
-                logscale[aux_index] += np.log(beta_sum)
-                beta_sum = 1.0
+            
+            if not last:
+                if r_prob[i] < 1.0:
+                    r = r_prob[i] / ((1.0 - r_prob[i]) * self.Nminusone)
+                    # inner loop of backwards algorithm
+                    logscale[aux_index] = logscale[aux_index_prev] + nor_x_theta[i]
+                    beta_aux[aux_index] = (
+                        beta_aux[aux_index_prev]
+                        + r * beta_sum
+                        / np.where(derived[:, snp], self.theta, self.ntheta)
+                    )
+                    beta_aux[aux_index] *= np.where(
+                        derived[:, snp], self.theta/self.ntheta, 1
+                    )
+                else:
+                    logscale[aux_index_prev] = logscale[aux_index]
+                    logscale[aux_index_prev] += np.log(
+                        self.ntheta / self.Nminusone * alpha_sum
+                    )
+                beta_aux[aux_index, k] = 0
+                beta_sum = (np.where(derived[:, snp], self.theta, self.ntheta) * beta_aux[aux_index]).sum()
+                if (
+                    beta_sum < LOWER_RESCALING_THRESHOLD
+                    or beta_sum > UPPER_RESCALING_THRESHOLD
+                ):
+                    beta_aux[aux_index] /= beta_sum
+                    logscale[aux_index] += np.log(beta_sum)
+                    beta_sum = 1.0
 
             # update beta and topology
             if rit_boundarySNP_end >= 0:
