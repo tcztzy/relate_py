@@ -13,6 +13,11 @@ dependencies = [
     "numpy==1.23.5",    # de facto numerical standard
     "pandas==1.5.2",    # de facto data processing standard
 ]
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+]
 
 [project.optional-dependencies]
 test = ["pytest>=6.0", "pytest-cov>=4.0"]
@@ -21,8 +26,8 @@ lint = ["black>=22.10.0", "mypy>=0.991"]
 dev = ["relatepy[test,docs,lint]"]
 
 [build-system]
-requires = ["pyproject-toml==0.0.10", "cython==3.0.0a11", "setuptools-rust>=1.4.0"]
-build-backend = "pyproject_toml.build_system.build_backend"
+requires = ["maturin>=0.14,<0.15"]
+build-backend = "maturin"
 
 [tool.pyright]
 reportShadowedImports = false

@@ -5,6 +5,7 @@ import click_log
 
 from ..utils import resource_usage
 from ..io import HapsFile
+from ..relatepy import make_chunks
 
 logger = logging.getLogger(__package__)
 click_log.basic_config(logger)
@@ -21,7 +22,4 @@ def chunk(
     memory_limit: float = 5.0,
 ) -> None:
     logger.debug("Parsing data.")
-    output.mkdir()
-    HapsFile(haps, sample, dist, use_transitions).make_chunks(
-        output, genetic_map, min_memory=memory_limit
-    )
+    make_chunks(haps, sample, genetic_map, output, dist, use_transitions, memory_limit)
