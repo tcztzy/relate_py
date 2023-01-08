@@ -5,9 +5,6 @@ cdef extern from "cxxopts.hpp" namespace "cxxopts":
 cdef extern from "options.cpp":
     Options get_options(int argc, char** argv)
 
-cdef extern from "Paint.cpp":
-    int Paint(Options& options, int chunk_index)
-
 cdef extern from "BuildTopology.cpp":
     int BuildTopology(Options& options, int chunk_index, int first_section, int last_section)
 

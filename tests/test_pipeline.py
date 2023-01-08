@@ -27,7 +27,7 @@ def test_paint(haps_path, sample_path, genetic_map_path, paint_bin, tmp_path: Pa
     (output_path := tmp_path / "output").mkdir()
     data = HapsFile(haps_path, sample_path)
     data.make_chunks(output_path, genetic_map_path)
-    paint(data, 0, output_path)
+    paint(output=output_path, chunk_index=0)
     paint_result = output_path / "chunk_0" / "paint" / "relate_0.bin"
     assert paint_result.exists()
     content = paint_result.read_bytes()

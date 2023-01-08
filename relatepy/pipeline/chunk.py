@@ -4,7 +4,6 @@ from pathlib import Path
 import click_log
 
 from ..utils import resource_usage
-from ..io import HapsFile
 from ..relatepy import make_chunks
 
 logger = logging.getLogger(__package__)

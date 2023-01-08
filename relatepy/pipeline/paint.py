@@ -3,6 +3,8 @@ import warnings
 
 import numpy as np
 from relatepy.io import HapsFile
+from ..utils import resource_usage
+from ..relatepy import paint as _paint
 
 LOWER_RESCALING_THRESHOLD = 1e-10
 UPPER_RESCALING_THRESHOLD = 1e10
@@ -181,24 +183,11 @@ def dump_to_file(f, a, b, l):
     f.write(a.tobytes())
 
 
+@resource_usage
 def paint(
-    data: HapsFile,
-    chunk_index: int,
     output: pathlib.Path,
-    theta: float | None = None,
-    rho: float | None = None,
+    chunk_index: int,
+    theta: float = 0.001,
+    rho: float = 1.0,
 ):
-    if theta is not None:
-        data.theta = theta
-        data.ntheta = 1 - theta
-    else:
-        theta = 0.001
-    if rho is not None:
-        data.r *= rho
-    else:
-        rho = 1.0
-
-    (paint_dir := output / f"chunk_{chunk_index}" / "paint").mkdir(parents=True)
-    painter = FastPainting(data.data.n_obs, theta)
-    for hap in range(data.N):
-        painter.paint_stepping_stones(data, chunk_index, hap, paint_dir)
+    _paint(output, chunk_index, theta, rho)

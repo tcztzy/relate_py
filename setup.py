@@ -36,7 +36,7 @@ extensions = [
             language="c++",
             extra_compile_args=["-std=c++17"],  # use C++ 17 for cpp_locals
             extra_link_args=["-std=c++17"],
-        ) for p in ("build_topology", "combine_sections", "finalize", "find_equivalent_branches", "get_branch_length", "paint")
+        ) for p in ("build_topology", "combine_sections", "finalize", "find_equivalent_branches", "get_branch_length")
     ],
 ]
 

@@ -10,7 +10,7 @@ from ._combine_sections import combine_sections
 from ._finalize import finalize
 from ._find_equivalent_branches import find_equivalent_branches
 from ._get_branch_length import get_branch_length
-from ._paint import paint as paint_pipeline
+from .paint import paint as paint_pipeline
 from .chunk import chunk as chunk_pipeline
 
 __all__ = ("all_pipeline", "chunk_pipeline", "paint_pipeline")
