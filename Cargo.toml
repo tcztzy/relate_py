@@ -9,5 +9,5 @@ name = "relatepy"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = { version = "0.17.3", features = ["extension-module"] }
+pyo3 = { version = "0.18.1", features = ["extension-module"] }
 relate = { git = "https://github.com/tcztzy/relate.git", branch = "main" }

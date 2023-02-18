@@ -9,9 +9,9 @@ dependencies = [
     "click==8.1.3",     # better CLI
     "click-log==0.4.0", # better CLI log
     "cython==3.0.0a11", # cope with CXX codes and better performance
-    "dask==2022.12.0",  # big data frame
-    "numpy==1.23.5",    # de facto numerical standard
-    "pandas==1.5.2",    # de facto data processing standard
+    "dask==2023.2.0",   # big data frame
+    "numpy==1.24.2",    # de facto numerical standard
+    "pandas==1.5.3",    # de facto data processing standard
 ]
 classifiers = [
     "Programming Language :: Rust",
